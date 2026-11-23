@@ -64,9 +64,13 @@ public sealed class HyperXProvider : IBatteryProvider
         try { s.Write(buf); }
         catch (IOException) { return null; }
         catch (TimeoutException) { return null; }
-        var r = HidUtil.ReadUntil(s, r => r.Length > 3 && r[0] == 0x21 && r[1] == 0xBB && r[2] == cmd, 1000);
-        return r?[3];
+        var r = HidUtil.ReadUntil(s, r => ParseReply(r, cmd) != null, 1000);
+        return r == null ? null : ParseReply(r, cmd);
     }
+
+    /// <summary>Cloud Alpha Wireless dongle reply "21 BB &lt;cmd&gt; &lt;value&gt;" → value, or null if it's another report.</summary>
+    internal static byte? ParseReply(byte[] r, byte cmd) =>
+        r.Length > 3 && r[0] == 0x21 && r[1] == 0xBB && r[2] == cmd ? r[3] : null;
 
     // ---- Other models, protocol from HeadsetControl (hyperx_cloud_2_wireless.hpp, hyperx_cloud_flight.hpp) -----------
 
@@ -109,7 +113,7 @@ public sealed class HyperXProvider : IBatteryProvider
         }
     }
 
-    private static int FlightPercent(int v)
+    internal static int FlightPercent(int v)
     {
         if (v <= 3648) return (int)Math.Round(0.00125 * v);
         if (v > 3975) return 100;

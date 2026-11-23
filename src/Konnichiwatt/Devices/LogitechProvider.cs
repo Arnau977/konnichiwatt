@@ -14,9 +14,9 @@ public sealed class LogitechProvider : IBatteryProvider, IRestorable
     private const int LogitechVid = 0x046D;
     private const byte LongReport = 0x11;
     private const byte SwId = 0x0B; // identifies our requests among G HUB's
-    private const ushort FeatName = 0x0005, FeatUnified = 0x1004, FeatStatus = 0x1000, FeatVoltage = 0x1001;
+    internal const ushort FeatName = 0x0005, FeatUnified = 0x1004, FeatStatus = 0x1000, FeatVoltage = 0x1001;
     /// <summary>ADC measurement, used by G533/G633/G635/G733/G933/G935 headsets (HeadsetControl).</summary>
-    private const ushort FeatAdc = 0x1F20;
+    internal const ushort FeatAdc = 0x1F20;
 
     /// <summary>
     /// A mouse that stops answering is most likely asleep (Logitech receivers can't tell asleep from switched off):
@@ -102,54 +102,46 @@ public sealed class LogitechProvider : IBatteryProvider, IRestorable
             _known[key] = k;
         }
 
-        int? pct; ChargeState state; bool approx = false;
-        switch (k.BatteryFeature)
-        {
-            case FeatUnified:
-            {
-                var r = Request(s, idx, k.BatteryIndex, 1);
-                if (r == null) { k.BatteryFeature = 0; return null; }
-                pct = r[4];
-                state = r[6] switch { 1 or 2 => ChargeState.Charging, 3 => ChargeState.Full, _ => ChargeState.Discharging };
-                if (pct == 0 && (r[5] & 0x0F) != 0) { pct = LevelFlagsToPercent(r[5]); approx = true; }
-                break;
-            }
-            case FeatStatus:
-            {
-                var r = Request(s, idx, k.BatteryIndex, 0);
-                if (r == null) { k.BatteryFeature = 0; return null; }
-                pct = r[4];
-                state = r[6] switch { 1 or 2 or 4 => ChargeState.Charging, 3 => ChargeState.Full, _ => ChargeState.Discharging };
-                break;
-            }
-            case FeatAdc:
-            {
-                var r = Request(s, idx, k.BatteryIndex, 0);
-                if (r == null) { k.BatteryFeature = 0; return null; }
-                int mv = (r[4] << 8) | r[5];
-                if (mv < HeadsetCurve[^1].mv) return null; // below the curve: headset off / no reading
-                pct = Interpolate(HeadsetCurve, mv);
-                approx = true;
-                state = r[6] == 0x03 ? ChargeState.Charging : ChargeState.Discharging;
-                if (k.Kind == DeviceKind.Mouse && k.Name == "Logitech") k.Kind = DeviceKind.Headset;
-                break;
-            }
-            default:
-            {
-                var r = Request(s, idx, k.BatteryIndex, 0);
-                if (r == null) { k.BatteryFeature = 0; return null; }
-                int mv = (r[4] << 8) | r[5];
-                byte flags = r[6];
-                pct = VoltageToPercent(mv);
-                approx = true;
-                state = (flags & 0x80) == 0 ? ChargeState.Discharging
-                      : (flags & 0x07) == 1 ? ChargeState.Full : ChargeState.Charging;
-                break;
-            }
-        }
+        // Unified Battery (0x1004) reads its status with function 1; the others with function 0.
+        var reply = Request(s, idx, k.BatteryIndex, k.BatteryFeature == FeatUnified ? (byte)1 : (byte)0);
+        if (reply == null) { k.BatteryFeature = 0; return null; }
+        if (DecodeBattery(k.BatteryFeature, reply) is not var (pct, state, approx)) return null;
+        if (k.BatteryFeature == FeatAdc && k.Kind == DeviceKind.Mouse && k.Name == "Logitech") k.Kind = DeviceKind.Headset;
 
         k.Last = new DeviceBattery(key, k.Name, k.Kind, pct, state, "logitech", approx, LastSeen: DateTime.Now);
         return k.Last;
+    }
+
+    /// <summary>Decodes a HID++ battery reply (20-byte long report; payload from byte 4). Null = no usable reading.</summary>
+    internal static (int? Percent, ChargeState State, bool Approximate)? DecodeBattery(ushort feature, byte[] r)
+    {
+        if (r.Length < 7) return null;
+        switch (feature)
+        {
+            case FeatUnified: // [4] state of charge %, [5] level flags, [6] charging status
+            {
+                int pct = r[4];
+                var state = r[6] switch { 1 or 2 => ChargeState.Charging, 3 => ChargeState.Full, _ => ChargeState.Discharging };
+                if (pct == 0 && (r[5] & 0x0F) != 0) return (LevelFlagsToPercent(r[5]), state, true);
+                return (pct, state, false);
+            }
+            case FeatStatus: // [4] level %, [5] next level, [6] status
+                return (r[4], r[6] switch { 1 or 2 or 4 => ChargeState.Charging, 3 => ChargeState.Full, _ => ChargeState.Discharging }, false);
+            case FeatAdc: // headsets: [4..5] mV (big endian), [6] 3 = charging
+            {
+                int mv = (r[4] << 8) | r[5];
+                if (mv < HeadsetCurve[^1].mv) return null; // below the curve: headset off / no reading
+                return (Interpolate(HeadsetCurve, mv), r[6] == 0x03 ? ChargeState.Charging : ChargeState.Discharging, true);
+            }
+            default: // 0x1001 Battery Voltage: [4..5] mV (big endian), [6] flags
+            {
+                int mv = (r[4] << 8) | r[5];
+                byte flags = r[6];
+                var state = (flags & 0x80) == 0 ? ChargeState.Discharging
+                          : (flags & 0x07) == 1 ? ChargeState.Full : ChargeState.Charging;
+                return (VoltageToPercent(mv), state, true);
+            }
+        }
     }
 
     // ---- HID++ helpers -------------------------------------------------------------

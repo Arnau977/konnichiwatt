@@ -12,7 +12,7 @@ public sealed class SteelSeriesProvider : IBatteryProvider
 {
     private const int Vid = 0x1038;
 
-    private enum Family { Arctis7, Arctis9, ProWireless, Nova7Discrete, Nova7Percent, Arctis7Plus, NovaProWireless }
+    internal enum Family { Arctis7, Arctis9, ProWireless, Nova7Discrete, Nova7Percent, Arctis7Plus, NovaProWireless }
 
     private static readonly Dictionary<int, (string Name, Family Family)> Pids = new()
     {
@@ -80,46 +80,50 @@ public sealed class SteelSeriesProvider : IBatteryProvider
 
     private static (int? Pct, ChargeState State)? Read(HidStream s, HidDevice d, Family f)
     {
+        if (f == Family.ProWireless)
+        {
+            // Pro Wireless answers the battery query even with the headset off: ask its status first.
+            var st = HidUtil.Transact(s, d, new byte[] { 0x41, 0xAA }, r => r.Length >= 1);
+            if (st == null || st[0] == 0x02) return null;
+        }
+        var (request, minLength) = BatteryRequest(f);
+        var reply = HidUtil.Transact(s, d, request, r => r.Length >= minLength);
+        return reply == null ? null : Decode(f, reply);
+    }
+
+    /// <summary>Battery request (first byte = report ID, hidapi convention) and minimum reply length per family.</summary>
+    internal static (byte[] Request, int MinLength) BatteryRequest(Family f) => f switch
+    {
+        Family.Arctis7 => (new byte[] { 0x06, 0x18 }, 3),
+        Family.Arctis9 => (new byte[] { 0x00, 0x20 }, 5),
+        Family.ProWireless => (new byte[] { 0x40, 0xAA }, 1),
+        Family.NovaProWireless => (new byte[] { 0x06, 0xB0 }, 16),
+        _ => (new byte[] { 0x00, 0xB0 }, 4), // Nova 7 family and Arctis 7+
+    };
+
+    /// <summary>Decodes a battery reply (hidapi form). Null = headset off / unusable.</summary>
+    internal static (int? Pct, ChargeState State)? Decode(Family f, byte[] r)
+    {
         switch (f)
         {
             case Family.Arctis7:
-            {
-                var r = HidUtil.Transact(s, d, new byte[] { 0x06, 0x18 }, r => r.Length >= 3);
-                return r == null ? null : (Math.Min((int)r[2], 100), ChargeState.Unknown);
-            }
+                return (Math.Min((int)r[2], 100), ChargeState.Unknown);
             case Family.Arctis9:
-            {
-                var r = HidUtil.Transact(s, d, new byte[] { 0x00, 0x20 }, r => r.Length >= 5);
-                if (r == null || r[4] == 0xFF) return null;
-                int pct = Math.Clamp((r[3] - 0x64) * 100 / (0x9A - 0x64), 0, 100);
-                return (pct, r[4] == 0x01 ? ChargeState.Charging : ChargeState.Discharging);
-            }
+                if (r[4] == 0xFF) return null;
+                return (Math.Clamp((r[3] - 0x64) * 100 / (0x9A - 0x64), 0, 100),
+                        r[4] == 0x01 ? ChargeState.Charging : ChargeState.Discharging);
             case Family.ProWireless:
-            {
-                var st = HidUtil.Transact(s, d, new byte[] { 0x41, 0xAA }, r => r.Length >= 1);
-                if (st == null || st[0] == 0x02) return null;
-                var r = HidUtil.Transact(s, d, new byte[] { 0x40, 0xAA }, r => r.Length >= 1);
-                return r == null ? null : (Math.Min(r[0], (byte)4) * 25, ChargeState.Unknown);
-            }
+                return (Math.Min(r[0], (byte)4) * 25, ChargeState.Unknown);
             case Family.NovaProWireless:
-            {
-                var r = HidUtil.Transact(s, d, new byte[] { 0x06, 0xB0 }, r => r.Length >= 16);
-                if (r == null || r[15] == 0x01) return null;
+                if (r[15] == 0x01) return null;
                 return ((int)Math.Round(Math.Min(r[6], (byte)8) * 12.5), r[15] == 0x02 ? ChargeState.Charging : ChargeState.Discharging);
-            }
-            default: // Nova 7 family and Arctis 7+
-            {
-                var r = HidUtil.Transact(s, d, new byte[] { 0x00, 0xB0 }, r => r.Length >= 4);
-                if (r == null) return null;
-                if (f == Family.Arctis7Plus)
-                {
-                    if (r[1] == 0x01) return null;
-                    return (Math.Min(r[2], (byte)4) * 25, r[3] == 0x01 ? ChargeState.Charging : ChargeState.Discharging);
-                }
+            case Family.Arctis7Plus:
+                if (r[1] == 0x01) return null;
+                return (Math.Min(r[2], (byte)4) * 25, r[3] == 0x01 ? ChargeState.Charging : ChargeState.Discharging);
+            default: // Nova 7
                 if (r[3] == 0x00) return null; // headset off
                 int pct = f == Family.Nova7Discrete ? Math.Min(r[2], (byte)4) * 25 : Math.Min((int)r[2], 100);
                 return (pct, r[3] is 0x01 or 0x02 ? ChargeState.Charging : ChargeState.Discharging);
-            }
         }
     }
 

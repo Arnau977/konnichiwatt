@@ -63,6 +63,16 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 Diagnóstico sin interfaz: `Konnichiwatt.exe --diag salida.txt`
 
+## Tests
+
+```powershell
+dotnet test Konnichiwatt.slnx
+```
+
+`tests/Konnichiwatt.Tests` comprueba la decodificación de cada protocolo (con respuestas reales capturadas del
+HyperX Cloud Alpha, el G903 y el dongle del GameSir T4n Pro, y con los formatos documentados del resto), el cálculo
+de la estimación de batería y la lógica de ajustes (orden, umbrales por dispositivo, modo discreto, pantallas).
+
 ## Cómo funciona el widget
 
 Windows 11 eliminó las "deskbands", así que el widget es una ventana *layered* (alpha por píxel) hija de

@@ -54,10 +54,24 @@ public sealed class CorsairHeadsetProvider : IBatteryProvider
         using var s = HidUtil.TryOpen(dev);
         if (s == null) return null;
         var r = HidUtil.Transact(s, dev, new byte[] { 0xC9, 0x64 }, r => r.Length >= 5);
-        if (r == null || r[4] == 0 || r[4] is not (1 or 2 or 4 or 5)) return null;
-        int pct = Math.Min(r[2] & 0x7F, 100);
+        if (r == null || DecodeVoid(r) is not var (pct, state)) return null;
         return new DeviceBattery($"corsair:{dev.ProductID:X4}", HidUtil.SafeProductName(dev, "Corsair Void"), DeviceKind.Headset,
-            pct, r[4] is 4 or 5 ? ChargeState.Charging : ChargeState.Discharging, "corsair", LastSeen: DateTime.Now);
+            pct, state, "corsair", LastSeen: DateTime.Now);
+    }
+
+    /// <summary>Void reply: [2] = % with bit 7 = mic up, [4] = 0 off · 1/2 on battery · 4/5 charging. Null if off/invalid.</summary>
+    internal static (int Percent, ChargeState State)? DecodeVoid(byte[] r)
+    {
+        if (r.Length < 5 || r[4] is not (1 or 2 or 4 or 5)) return null;
+        return (Math.Min(r[2] & 0x7F, 100), r[4] is 4 or 5 ? ChargeState.Charging : ChargeState.Discharging);
+    }
+
+    /// <summary>Wireless V2 battery property: little-endian tenths of a percent at [4..5]. Null if out of range.</summary>
+    internal static int? DecodeV2(byte[] r)
+    {
+        if (r.Length < 6) return null;
+        int tenths = r[4] | (r[5] << 8);
+        return tenths is <= 0 or > 1000 ? null : tenths / 10;
     }
 
     private static DeviceBattery? ReadV2(HidDevice dev, string name)
@@ -75,9 +89,8 @@ public sealed class CorsairHeadsetProvider : IBatteryProvider
             var r = HidUtil.Transact(s, dev, new byte[] { 0x00, 0x02, 0x09, 0x02, 0x0F },
                 r => r.Length >= 6, 800);
             if (r == null) continue;
-            int tenths = r[4] | (r[5] << 8);
-            if (tenths is <= 0 or > 1000) continue;
-            return new DeviceBattery($"corsair:{dev.ProductID:X4}", name, DeviceKind.Headset, tenths / 10,
+            if (DecodeV2(r) is not int pct) continue;
+            return new DeviceBattery($"corsair:{dev.ProductID:X4}", name, DeviceKind.Headset, pct,
                 ChargeState.Unknown, "corsair", LastSeen: DateTime.Now);
         }
         return null;

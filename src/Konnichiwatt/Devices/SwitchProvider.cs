@@ -48,13 +48,8 @@ public sealed class SwitchProvider : IBatteryProvider
 
             if (status is byte b)
             {
-                int nibble = b >> 4;
-                int level = nibble & 0x0E;
-                bool charging = (nibble & 0x01) != 0;
-                int pct = level switch { >= 8 => 100, 6 => 70, 4 => 40, 2 => 15, _ => 0 };
-                result.Add(new DeviceBattery(id, name, info.Kind, pct,
-                    charging ? (level >= 8 ? ChargeState.Full : ChargeState.Charging) : ChargeState.Discharging,
-                    "switch", Approximate: true, LastSeen: DateTime.Now));
+                var (pct, state) = DecodeStatus(b);
+                result.Add(new DeviceBattery(id, name, info.Kind, pct, state, "switch", Approximate: true, LastSeen: DateTime.Now));
             }
             else if (!bluetooth)
             {
@@ -63,6 +58,17 @@ public sealed class SwitchProvider : IBatteryProvider
             }
         }
         return result;
+    }
+
+    /// <summary>Byte 2 of 0x21/0x30 reports: high nibble = level (8 full … 0 empty) | charging bit.</summary>
+    internal static (int Percent, ChargeState State) DecodeStatus(byte b)
+    {
+        int nibble = b >> 4;
+        int level = nibble & 0x0E;
+        bool charging = (nibble & 0x01) != 0;
+        int pct = level switch { >= 8 => 100, 6 => 70, 4 => 40, 2 => 15, _ => 0 };
+        var state = charging ? (level >= 8 ? ChargeState.Full : ChargeState.Charging) : ChargeState.Discharging;
+        return (pct, state);
     }
 
     private byte? ReadStatusByte(HidStream s, int outLen)

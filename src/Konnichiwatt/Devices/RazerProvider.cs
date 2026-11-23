@@ -129,26 +129,41 @@ public sealed class RazerProvider : IBatteryProvider
     {
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            var req = new byte[91]; // [0] = report ID 0, then the 90-byte razer_report
-            req[2] = tid;
-            req[6] = 0x02;     // data size
-            req[7] = 0x07;     // command class: misc / power
-            req[8] = commandId;
-            byte crc = 0;
-            for (int i = 3; i < 89; i++) crc ^= req[i]; // report bytes 2..87
-            req[89] = crc;
-
+            var req = BuildRequest(tid, commandId);
             if (!HidD_SetFeature(h, req, req.Length)) return null;
             Thread.Sleep(Math.Max(1, waitMs));
             var resp = new byte[91];
             if (!HidD_GetFeature(h, resp, resp.Length)) return null;
 
-            byte status = resp[1];
-            if (status == 0x01) { Thread.Sleep(10); continue; } // busy
-            if (status != 0x02 || resp[7] != 0x07 || resp[8] != commandId) return null;
-            return resp[10]; // args[1]
+            var (busy, value) = ParseReply(resp, commandId);
+            if (busy) { Thread.Sleep(10); continue; }
+            return value;
         }
         return null;
+    }
+
+    /// <summary>Feature report buffer: [0] report ID 0, then the 90-byte razer_report for class 0x07 / <paramref name="commandId"/>.</summary>
+    internal static byte[] BuildRequest(byte tid, byte commandId)
+    {
+        var req = new byte[91];
+        req[2] = tid;
+        req[6] = 0x02;     // data size
+        req[7] = 0x07;     // command class: misc / power
+        req[8] = commandId;
+        byte crc = 0;
+        for (int i = 3; i < 89; i++) crc ^= req[i]; // report bytes 2..87
+        req[89] = crc;
+        return req;
+    }
+
+    /// <summary>Busy (retry) or the reply's args[1]; value is null when the command failed / device asleep.</summary>
+    internal static (bool Busy, int? Value) ParseReply(byte[] resp, byte commandId)
+    {
+        if (resp.Length < 11) return (false, null);
+        byte status = resp[1];
+        if (status == 0x01) return (true, null);
+        if (status != 0x02 || resp[7] != 0x07 || resp[8] != commandId) return (false, null);
+        return (false, resp[10]);
     }
 
     private static SafeFileHandle? OpenNoAccess(string path)

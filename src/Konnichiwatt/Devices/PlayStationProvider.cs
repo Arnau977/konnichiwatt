@@ -53,7 +53,7 @@ public sealed class PlayStationProvider : IBatteryProvider
         return result;
     }
 
-    private static byte? Status(byte[] r, bool dualSense, bool bt)
+    internal static byte? Status(byte[] r, bool dualSense, bool bt)
     {
         if (r.Length == 0) return null;
         if (dualSense)
@@ -74,7 +74,7 @@ public sealed class PlayStationProvider : IBatteryProvider
         return null;
     }
 
-    private static (int?, ChargeState) DecodeDualSense(byte st)
+    internal static (int?, ChargeState) DecodeDualSense(byte st)
     {
         int level = st & 0x0F, charging = st >> 4;
         return charging switch
@@ -86,7 +86,7 @@ public sealed class PlayStationProvider : IBatteryProvider
         };
     }
 
-    private static (int?, ChargeState) DecodeDs4(byte st)
+    internal static (int?, ChargeState) DecodeDs4(byte st)
     {
         int level = st & 0x0F;
         bool cable = (st & 0x10) != 0;

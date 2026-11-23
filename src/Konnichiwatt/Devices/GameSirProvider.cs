@@ -46,18 +46,29 @@ public sealed class GameSirProvider : IBatteryProvider
             var info = QueryInfo(s);
             if (info == null) continue; // dongle without a linked controller (pad off)
 
-            int raw = info[13];
-            var mac = BitConverter.ToString(info, 7, 6).Replace("-", "");
+            if (ParseInfo(info) is not var (mac, pct, charging)) continue;
             result.Add(new DeviceBattery(
                 Id: $"gamesir:{mac}",
                 Name: GameSirName(dev.ProductID),
                 Kind: DeviceKind.Controller,
-                Percent: raw == 0xFF ? null : Math.Min(raw, 100),
-                State: raw == 0xFF ? ChargeState.Charging : ChargeState.Discharging,
+                Percent: pct,
+                State: charging ? ChargeState.Charging : ChargeState.Discharging,
                 Source: "gamesir",
                 LastSeen: DateTime.Now));
         }
         return result;
+    }
+
+    /// <summary>
+    /// Device-info reply: 06 0E 0A 01 | id | fw(2) | mac(6) | battery | type. Battery 0-100 %, 255 = charging
+    /// (no level reported then). Null if the frame isn't a device-info reply.
+    /// </summary>
+    internal static (string Mac, int? Percent, bool Charging)? ParseInfo(byte[] r)
+    {
+        if (r.Length < 14 || r[0] != 0x06 || r[1] < 0x0D || r[2] != GroupInfo || r[3] != OpDeviceInfo) return null;
+        int raw = r[13];
+        var mac = BitConverter.ToString(r, 7, 6).Replace("-", "");
+        return raw == 0xFF ? (mac, null, true) : (mac, Math.Min(raw, 100), false);
     }
 
     private byte[]? QueryInfo(HidStream s)
