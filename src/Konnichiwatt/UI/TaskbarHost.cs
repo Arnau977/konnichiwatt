@@ -39,14 +39,15 @@ internal sealed class TaskbarHost : IDisposable
         var wanted = new List<(IntPtr Handle, bool Primary)>();
         if (_settings.ShowTaskbarWidget)
         {
+            var monitors = MonitorsCached();
+            bool Shows(IntPtr taskbar, bool primary) =>
+                _settings.ShowsOnMonitor(Monitors.IdForWindow(taskbar, monitors), primary);
+
             var main = FindWindow("Shell_TrayWnd", null);
-            if (main != IntPtr.Zero) wanted.Add((main, true));
-            if (_settings.ShowOnAllTaskbars)
-            {
-                var h = IntPtr.Zero;
-                while ((h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
-                    wanted.Add((h, false));
-            }
+            if (main != IntPtr.Zero && Shows(main, true)) wanted.Add((main, true));
+            var h = IntPtr.Zero;
+            while ((h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
+                if (Shows(h, false)) wanted.Add((h, false));
         }
         _anchors.Track(wanted.Where(t => !t.Primary).Select(t => t.Handle));
 
@@ -67,6 +68,23 @@ internal sealed class TaskbarHost : IDisposable
             w.SetDevices(_devices);
         }
     }
+
+    // Monitor names/ids only change when displays are reconfigured; re-query at most every few seconds.
+    private List<MonitorDesc> _monitors = new();
+    private long _monitorsAt;
+
+    private List<MonitorDesc> MonitorsCached()
+    {
+        if (_monitors.Count == 0 || Environment.TickCount64 - _monitorsAt > 5000)
+        {
+            _monitors = Monitors.All();
+            _monitorsAt = Environment.TickCount64;
+        }
+        return _monitors;
+    }
+
+    /// <summary>Call when displays change so the next sync sees the new monitors at once.</summary>
+    public void InvalidateMonitors() => _monitorsAt = 0;
 
     public void Dispose()
     {

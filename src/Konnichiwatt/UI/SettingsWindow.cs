@@ -333,8 +333,52 @@ internal sealed class SettingsWindow : Form
         _content.Controls.Add(SectionLabel("Dónde se muestra"));
         _content.Controls.Add(Card("", "Mostrar en la barra de tareas", "Si lo desactivas, solo queda el icono de la bandeja",
             Toggle(_s.ShowTaskbarWidget, v => _s.ShowTaskbarWidget = v)));
-        _content.Controls.Add(Card("", "Mostrar en todas las pantallas", "También en la barra de tareas de los otros monitores",
-            Toggle(_s.ShowOnAllTaskbars, v => _s.ShowOnAllTaskbars = v)));
+        AddMonitorCards();
+    }
+
+    /// <summary>One switch per connected monitor; at least one must stay on.</summary>
+    private void AddMonitorCards()
+    {
+        var monitors = Monitors.All();
+        var primary = monitors.FirstOrDefault(m => m.Primary);
+        foreach (var m in monitors)
+        {
+            var toggle = new ToggleSwitch(_s.ShowsOnMonitor(m.Id, m.Primary)) { Enabled = monitors.Count > 1 };
+            toggle.CheckedChanged += (_, _) =>
+            {
+                var chosen = monitors.Where(x => _s.ShowsOnMonitor(x.Id, x.Primary)).Select(x => x.Id).ToHashSet();
+                if (toggle.Checked) chosen.Add(m.Id); else chosen.Remove(m.Id);
+                if (chosen.Count == 0) { toggle.SetSilently(true); return; } // the widget must live somewhere
+                // Remember choices for monitors that are unplugged right now.
+                var unplugged = (_s.TaskbarMonitors ?? new()).Where(id => monitors.All(x => x.Id != id));
+                _s.TaskbarMonitors = chosen.Concat(unplugged).Distinct().ToList();
+                Changed();
+            };
+
+            bool friendly = !m.Name.StartsWith("Pantalla ", StringComparison.Ordinal);
+            var title = friendly ? $"{m.Name}  ·  pantalla {m.Number}" : m.Name;
+            var parts = new List<string>();
+            if (m.Primary) parts.Add("Principal");
+            parts.Add($"{m.Bounds.Width} × {m.Bounds.Height}");
+            if (!m.Primary && primary != null) parts.Add(RelativePosition(m.Bounds, primary.Bounds));
+            if (monitors.Count == 1) parts.Add("única pantalla");
+            _content.Controls.Add(Card("", title, string.Join(" · ", parts), toggle));
+        }
+    }
+
+    private static string RelativePosition(Rectangle r, Rectangle primary)
+    {
+        if (r.Right <= primary.Left) return "a la izquierda";
+        if (r.Left >= primary.Right) return "a la derecha";
+        if (r.Bottom <= primary.Top) return "arriba";
+        if (r.Top >= primary.Bottom) return "abajo";
+        return "superpuesta";
+    }
+
+    /// <summary>Monitors were plugged/unplugged or rearranged: refresh the list if it's on screen.</summary>
+    public void DisplaysChanged()
+    {
+        if (_page == 1 && !IsDisposed) ShowPage(1);
     }
 
     private void BuildAlerts()
@@ -417,6 +461,7 @@ internal sealed class SettingsWindow : Form
             ShowInTaskbar = false,
         };
         w.Show();
+        w.ClientSize = new Size(w.ClientSize.Width, F.Px(760)); // tall enough to see whole pages without scrolling
         for (int i = 0; i < Pages.Length; i++)
         {
             w.ShowPage(i);

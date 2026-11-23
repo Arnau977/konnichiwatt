@@ -92,7 +92,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _settingsWindow?.ApplyTheme();
     }
 
-    private void OnDisplayChanged(object? sender, EventArgs e) => _taskbars.Refresh(force: true);
+    private void OnDisplayChanged(object? sender, EventArgs e)
+    {
+        _taskbars.InvalidateMonitors();
+        _taskbars.Refresh(force: true);
+        _settingsWindow?.DisplaysChanged();
+    }
 
     /// <summary>Any change made in the settings window: persist it and apply it everywhere.</summary>
     private void OnSettingsChanged()

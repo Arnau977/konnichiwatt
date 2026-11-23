@@ -19,8 +19,18 @@ public sealed class AppSettings
     public List<string> HiddenDevices { get; set; } = new();
     public bool ChargeCompleteNotifications { get; set; } = true;
     public bool HideWhileCharging { get; set; } = false;
-    /// <summary>Also show the widget on the taskbars of secondary monitors.</summary>
+    /// <summary>Legacy (v0.2) switch, only used while <see cref="TaskbarMonitors"/> has never been set.</summary>
     public bool ShowOnAllTaskbars { get; set; } = true;
+    /// <summary>
+    /// Monitors (stable device-path ids) whose taskbar shows the widget. Null = never chosen: all monitors
+    /// (or only the main one if the legacy switch was off). Ids of unplugged monitors are kept for when they return.
+    /// </summary>
+    public List<string>? TaskbarMonitors { get; set; }
+
+    public bool ShowsOnMonitor(string? monitorId, bool primary) =>
+        TaskbarMonitors == null
+            ? ShowOnAllTaskbars || primary
+            : monitorId != null && TaskbarMonitors.Contains(monitorId);
     /// <summary>User overrides per device id (custom name / icon).</summary>
     public Dictionary<string, DeviceCustomization> Customizations { get; set; } = new();
     /// <summary>Display order chosen by the user (device ids); unknown devices go after these.</summary>
