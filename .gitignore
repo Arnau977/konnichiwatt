@@ -1,0 +1,7 @@
+bin/
+obj/
+publish/
+.vs/
+*.user
+# copia antigua con el nombre anterior (bloqueada, borrar a mano)
+src/WirelessTray/
