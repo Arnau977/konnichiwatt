@@ -31,6 +31,34 @@ public sealed class AppSettings
             ? d with { Name = string.IsNullOrWhiteSpace(c.Name) ? d.Name : c.Name!, Kind = c.Kind ?? d.Kind }
             : d;
 
+    /// <summary>Devices with the user's names/icons applied, in the user's order (unknown ones keep detection order).</summary>
+    public List<DeviceBattery> Arrange(IEnumerable<DeviceBattery> all) =>
+        all.Select(Customize)
+            .Select((d, i) => (d, i))
+            .OrderBy(t => DeviceOrder.IndexOf(t.d.Id) is var k && k >= 0 ? k : int.MaxValue)
+            .ThenBy(t => t.i)
+            .Select(t => t.d)
+            .ToList();
+
+    public bool IsShown(DeviceBattery d) =>
+        !HiddenDevices.Contains(d.Id) && !(HideWhileCharging && d.IsCharging);
+
+    /// <summary>Swaps the device at <paramref name="index"/> of <paramref name="currentIds"/> with its neighbour.</summary>
+    public void MoveDevice(IReadOnlyList<string> currentIds, int index, int delta)
+    {
+        var ids = currentIds.ToList();
+        int j = index + delta;
+        if (index < 0 || index >= ids.Count || j < 0 || j >= ids.Count) return;
+        (ids[index], ids[j]) = (ids[j], ids[index]);
+        // Keep the remembered position of devices that are not connected right now, after the current ones.
+        DeviceOrder = ids.Concat(DeviceOrder.Where(id => !ids.Contains(id))).ToList();
+    }
+
+    public void ToggleHidden(string id)
+    {
+        if (!HiddenDevices.Remove(id)) HiddenDevices.Add(id);
+    }
+
     public string DisplayName(string id, string fallback) =>
         Customizations.TryGetValue(id, out var c) && !string.IsNullOrWhiteSpace(c.Name) ? c.Name! : fallback;
 

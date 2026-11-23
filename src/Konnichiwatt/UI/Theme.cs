@@ -17,6 +17,56 @@ internal static class Theme
         catch { return false; }
     }
 
+    /// <summary>App theme (Settings › Personalización › Colores › modo de las aplicaciones).</summary>
+    public static bool IsLightApps()
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return k?.GetValue("AppsUseLightTheme") is int v && v == 1;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Windows accent colour as used by Windows 11 controls: the lighter "Light 2" shade on dark theme,
+    /// the darker "Dark 1" shade on light theme (from Explorer\Accent\AccentPalette).
+    /// </summary>
+    public static Color Accent(bool light)
+    {
+        var c = light ? Color.FromArgb(0x00, 0x5F, 0xB8) : Color.FromArgb(0x4C, 0xC2, 0xFF);
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent");
+            if (k?.GetValue("AccentPalette") is byte[] p && p.Length >= 32)
+            {
+                int i = (light ? 4 : 1) * 4;
+                c = Color.FromArgb(p[i], p[i + 1], p[i + 2]);
+            }
+        }
+        catch { }
+        // Very dark accents (e.g. navy) vanish on the dark surfaces: lighten them, keeping the hue.
+        if (!light)
+            for (int step = 0; step < 10 && Luminance(c) < 0.28; step++)
+                c = Blend(c, Color.White, 0.18);
+        else
+            for (int step = 0; step < 10 && Luminance(c) > 0.45; step++)
+                c = Blend(c, Color.Black, 0.18);
+        return c;
+    }
+
+    /// <summary>Text colour readable on top of <paramref name="background"/>.</summary>
+    public static Color OnColor(Color background) => Luminance(background) > 0.45 ? Color.Black : Color.White;
+
+    private static double Luminance(Color c)
+    {
+        static double Lin(int v) { double s = v / 255.0; return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4); }
+        return 0.2126 * Lin(c.R) + 0.7152 * Lin(c.G) + 0.0722 * Lin(c.B);
+    }
+
+    private static Color Blend(Color a, Color b, double t) => Color.FromArgb(
+        (int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+
     public static Color Foreground(bool light) => light ? Color.FromArgb(0x1B, 0x1B, 0x1B) : Color.White;
     public static Color Secondary(bool light) => light ? Color.FromArgb(0x60, 0x60, 0x60) : Color.FromArgb(0xC5, 0xC5, 0xC5);
     public static Color Low(bool light) => light ? Color.FromArgb(0xC4, 0x2B, 0x1C) : Color.FromArgb(0xFF, 0x99, 0xA4);

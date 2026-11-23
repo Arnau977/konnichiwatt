@@ -20,16 +20,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly HashSet<string> _chargingIncomplete = new();
     private IReadOnlyList<DeviceBattery> _all = Array.Empty<DeviceBattery>();
     private TaskbarWidget? _hovered;
+    private SettingsWindow? _settingsWindow;
     private IntPtr _trayIconHandle;
+    private int _lastThreshold;
 
-    private static readonly (string Label, DeviceKind Kind)[] IconChoices =
+    public TrayApplicationContext(bool openSettings = false)
     {
-        ("Auriculares", DeviceKind.Headset), ("Ratón", DeviceKind.Mouse), ("Teclado", DeviceKind.Keyboard),
-        ("Mando", DeviceKind.Controller), ("Altavoz", DeviceKind.Speaker), ("Otro", DeviceKind.Other),
-    };
-
-    public TrayApplicationContext()
-    {
+        _lastThreshold = _settings.LowBatteryThreshold;
         _monitor = new DeviceMonitor(Program.CreateProviders(), TimeSpan.FromSeconds(_settings.PollSeconds));
         _monitor.Updated += OnUpdated;
 
@@ -45,7 +42,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _menu.Opening += (_, _) => BuildMenu();
         _tray = new NotifyIcon { Text = "Konnichiwatt", ContextMenuStrip = _menu, Visible = true };
-        _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenuAtCursor(); };
+        _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) OpenSettings(); };
         UpdateTrayIcon();
 
         _layoutTimer.Tick += (_, _) => _taskbars.Refresh();
@@ -55,29 +52,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _monitor.Start();
         Log.Write("Started");
+        if (openSettings) OpenSettings();
     }
 
-    // ---- Device list: customisation, order, visibility --------------------------------
-
-    /// <summary>All detected devices with the user's names/icons applied, in the user's order.</summary>
-    private List<DeviceBattery> Customized
-    {
-        get
-        {
-            var order = _settings.DeviceOrder;
-            return _all.Select(_settings.Customize)
-                .Select((d, i) => (d, i))
-                .OrderBy(t => order.IndexOf(t.d.Id) is var k && k >= 0 ? k : int.MaxValue)
-                .ThenBy(t => t.i)
-                .Select(t => t.d)
-                .ToList();
-        }
-    }
-
-    private bool IsShown(DeviceBattery d) =>
-        !_settings.HiddenDevices.Contains(d.Id) && !(_settings.HideWhileCharging && d.IsCharging);
-
-    private List<DeviceBattery> Visible => Customized.Where(IsShown).ToList();
+    private List<DeviceBattery> Customized => _settings.Arrange(_all);
+    private List<DeviceBattery> Visible => Customized.Where(_settings.IsShown).ToList();
 
     private void OnUpdated(IReadOnlyList<DeviceBattery> devices)
     {
@@ -91,10 +70,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// <summary>Pushes the current list to every view (after a poll or a settings change).</summary>
     private void Republish()
     {
-        var visible = Visible;
-        _taskbars.SetDevices(visible);
+        _taskbars.SetDevices(Visible);
         if (_popup.Visible) ShowPopup();
         UpdateTrayIcon();
+        _settingsWindow?.RefreshDevices();
     }
 
     private void ShowPopup()
@@ -109,15 +88,49 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _taskbars.Refresh(force: true);
         UpdateTrayIcon();
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.VisualStyle)
+            _settingsWindow?.ApplyTheme();
     }
 
     private void OnDisplayChanged(object? sender, EventArgs e) => _taskbars.Refresh(force: true);
 
-    private void SaveAndRepublish()
+    /// <summary>Any change made in the settings window: persist it and apply it everywhere.</summary>
+    private void OnSettingsChanged()
     {
         _settings.PruneCustomizations();
         _settings.Save();
-        Republish();
+        _monitor.Interval = TimeSpan.FromSeconds(_settings.PollSeconds);
+        if (_settings.LowBatteryThreshold != _lastThreshold)
+        {
+            _lastThreshold = _settings.LowBatteryThreshold;
+            _lowNotified.Clear();
+        }
+        _taskbars.SetDevices(Visible);
+        _taskbars.Refresh(force: true);
+        if (_popup.Visible) ShowPopup();
+        UpdateTrayIcon();
+    }
+
+    private void OpenSettings()
+    {
+        _popup.Hide();
+        if (_settingsWindow is { IsDisposed: false })
+        {
+            if (_settingsWindow.WindowState == FormWindowState.Minimized) _settingsWindow.WindowState = FormWindowState.Normal;
+            _settingsWindow.Activate();
+            return;
+        }
+        _settingsWindow = new SettingsWindow(_settings, new SettingsWindow.Callbacks(
+            RawDevices: () => _all,
+            Changed: OnSettingsChanged,
+            PollNow: _monitor.RequestPoll,
+            Diagnostics: RunDiagnostics,
+            TestNotification: () => _tray.ShowBalloonTip(5000, "Konnichiwatt 👋⚡",
+                "Así se verán los avisos de batería baja y de carga completa.", ToolTipIcon.Info)),
+            _tray.Icon is Icon i ? (Icon)i.Clone() : null);
+        _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     // ---- Tray icon -------------------------------------------------------------------
@@ -190,7 +203,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    // ---- Menu --------------------------------------------------------------------------
+    // ---- Menu (the essentials; everything else lives in the settings window) -----------
 
     private void ShowMenuAtCursor()
     {
@@ -212,176 +225,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _menu.Items.Add(new ToolStripMenuItem(text) { Enabled = false });
         }
         _menu.Items.Add(new ToolStripSeparator());
-
         _menu.Items.Add("Actualizar ahora", null, (_, _) => _monitor.RequestPoll());
-        _menu.Items.Add(BuildDevicesMenu());
-
-        var widget = new ToolStripMenuItem("Mostrar en la barra de tareas") { Checked = _settings.ShowTaskbarWidget };
-        widget.Click += (_, _) => { _settings.ShowTaskbarWidget = !_settings.ShowTaskbarWidget; _settings.Save(); _taskbars.Refresh(force: true); };
-        _menu.Items.Add(widget);
-
-        var allScreens = new ToolStripMenuItem("Mostrar en todas las pantallas") { Checked = _settings.ShowOnAllTaskbars };
-        allScreens.Click += (_, _) => { _settings.ShowOnAllTaskbars = !_settings.ShowOnAllTaskbars; _settings.Save(); _taskbars.Refresh(force: true); };
-        _menu.Items.Add(allScreens);
-
-        var display = new ToolStripMenuItem("Mostrar batería como");
-        foreach (var (label, value) in new[]
-                 {
-                     ("Porcentaje", BatteryDisplay.Percent),
-                     ("Icono de batería", BatteryDisplay.Icon),
-                     ("Icono + porcentaje", BatteryDisplay.IconAndPercent),
-                 })
-        {
-            var item = new ToolStripMenuItem(label) { Checked = _settings.Display == value };
-            item.Click += (_, _) => { _settings.Display = value; _settings.Save(); _taskbars.Refresh(force: true); };
-            display.DropDownItems.Add(item);
-        }
-        _menu.Items.Add(display);
-
-        var bold = new ToolStripMenuItem("Texto e iconos gruesos") { Checked = _settings.BoldStyle };
-        bold.Click += (_, _) => { _settings.BoldStyle = !_settings.BoldStyle; _settings.Save(); _taskbars.Refresh(force: true); };
-        _menu.Items.Add(bold);
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        var alerts = new ToolStripMenuItem("Aviso de batería baja");
-        var off = new ToolStripMenuItem("Desactivado") { Checked = !_settings.LowBatteryNotifications };
-        off.Click += (_, _) => { _settings.LowBatteryNotifications = false; _settings.Save(); };
-        alerts.DropDownItems.Add(off);
-        foreach (var t in new[] { 10, 15, 20, 30 })
-        {
-            var item = new ToolStripMenuItem($"Al {t}%") { Checked = _settings.LowBatteryNotifications && _settings.LowBatteryThreshold == t };
-            item.Click += (_, _) =>
-            {
-                _settings.LowBatteryNotifications = true; _settings.LowBatteryThreshold = t; _settings.Save();
-                _lowNotified.Clear(); _taskbars.Refresh(force: true);
-            };
-            alerts.DropDownItems.Add(item);
-        }
-        _menu.Items.Add(alerts);
-
-        var full = new ToolStripMenuItem("Aviso de carga completa") { Checked = _settings.ChargeCompleteNotifications };
-        full.Click += (_, _) => { _settings.ChargeCompleteNotifications = !_settings.ChargeCompleteNotifications; _settings.Save(); };
-        _menu.Items.Add(full);
-
-        var interval = new ToolStripMenuItem("Frecuencia de lectura");
-        foreach (var (label, secs) in new[] { ("15 segundos", 15), ("30 segundos", 30), ("1 minuto", 60), ("5 minutos", 300) })
-        {
-            var item = new ToolStripMenuItem(label) { Checked = _settings.PollSeconds == secs };
-            item.Click += (_, _) => { _settings.PollSeconds = secs; _settings.Save(); _monitor.Interval = TimeSpan.FromSeconds(secs); };
-            interval.DropDownItems.Add(item);
-        }
-        _menu.Items.Add(interval);
-
-        var startup = new ToolStripMenuItem("Iniciar con Windows") { Checked = SafeStartupEnabled() };
-        startup.Click += (_, _) =>
-        {
-            try { Startup.IsEnabled = !Startup.IsEnabled; }
-            catch (Exception e) { Log.Error("Startup toggle", e); }
-        };
-        _menu.Items.Add(startup);
-
-        _menu.Items.Add("Diagnóstico…", null, (_, _) => RunDiagnostics());
+        var settings = new ToolStripMenuItem("Ajustes…", null, (_, _) => OpenSettings());
+        settings.Font = new Font(settings.Font, FontStyle.Bold);
+        _menu.Items.Add(settings);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("Salir", null, (_, _) => ExitThread());
-    }
-
-    /// <summary>"Dispositivos" submenu: per device show/hide, rename, icon and position.</summary>
-    private ToolStripMenuItem BuildDevicesMenu()
-    {
-        var root = new ToolStripMenuItem("Dispositivos");
-        var present = Customized;
-        var ids = present.Select(d => d.Id).ToList();
-
-        for (int i = 0; i < present.Count; i++)
-        {
-            var d = present[i];
-            var original = _all.First(a => a.Id == d.Id);
-            bool hidden = _settings.HiddenDevices.Contains(d.Id);
-            var item = new ToolStripMenuItem(hidden ? $"{d.Name} (oculto)" : d.Name);
-
-            var show = new ToolStripMenuItem("Mostrar") { Checked = !hidden };
-            show.Click += (_, _) => ToggleHidden(d.Id);
-            item.DropDownItems.Add(show);
-
-            item.DropDownItems.Add("Cambiar nombre…", null, (_, _) =>
-            {
-                var current = _settings.DisplayName(d.Id, original.Name);
-                var name = RenameDialog.Ask(original.Name, current);
-                if (name == null) return;
-                _settings.CustomizationFor(d.Id).Name = name.Length == 0 || name == original.Name ? null : name;
-                SaveAndRepublish();
-            });
-
-            var icon = new ToolStripMenuItem("Icono");
-            var custom = _settings.Customizations.TryGetValue(d.Id, out var c) ? c.Kind : null;
-            var auto = new ToolStripMenuItem($"Automático ({Theme.KindName(original.Kind).ToLowerInvariant()})") { Checked = custom == null };
-            auto.Click += (_, _) => { _settings.CustomizationFor(d.Id).Kind = null; SaveAndRepublish(); };
-            icon.DropDownItems.Add(auto);
-            icon.DropDownItems.Add(new ToolStripSeparator());
-            foreach (var (label, kind) in IconChoices)
-            {
-                var k = new ToolStripMenuItem(label) { Checked = custom == kind };
-                k.Click += (_, _) => { _settings.CustomizationFor(d.Id).Kind = kind; SaveAndRepublish(); };
-                icon.DropDownItems.Add(k);
-            }
-            item.DropDownItems.Add(icon);
-
-            item.DropDownItems.Add(new ToolStripSeparator());
-            int index = i;
-            var left = new ToolStripMenuItem("Mover a la izquierda") { Enabled = index > 0 };
-            left.Click += (_, _) => Move(ids, index, -1);
-            var right = new ToolStripMenuItem("Mover a la derecha") { Enabled = index < present.Count - 1 };
-            right.Click += (_, _) => Move(ids, index, +1);
-            item.DropDownItems.Add(left);
-            item.DropDownItems.Add(right);
-
-            root.DropDownItems.Add(item);
-        }
-
-        // Hidden devices that are not connected right now: allow un-hiding them.
-        foreach (var id in _settings.HiddenDevices.Where(id => !ids.Contains(id)).ToList())
-        {
-            var name = _settings.DisplayName(id, id);
-            var item = new ToolStripMenuItem($"{name} (oculto, no conectado)");
-            var show = new ToolStripMenuItem("Mostrar") { Checked = false };
-            show.Click += (_, _) => ToggleHidden(id);
-            item.DropDownItems.Add(show);
-            root.DropDownItems.Add(item);
-        }
-
-        if (root.DropDownItems.Count == 0)
-            root.DropDownItems.Add(new ToolStripMenuItem("Ningún dispositivo detectado") { Enabled = false });
-
-        root.DropDownItems.Add(new ToolStripSeparator());
-        var whileCharging = new ToolStripMenuItem("Ocultar los que se están cargando") { Checked = _settings.HideWhileCharging };
-        whileCharging.Click += (_, _) => { _settings.HideWhileCharging = !_settings.HideWhileCharging; SaveAndRepublish(); };
-        root.DropDownItems.Add(whileCharging);
-        var resetOrder = new ToolStripMenuItem("Restablecer orden") { Enabled = _settings.DeviceOrder.Count > 0 };
-        resetOrder.Click += (_, _) => { _settings.DeviceOrder.Clear(); SaveAndRepublish(); };
-        root.DropDownItems.Add(resetOrder);
-        return root;
-    }
-
-    private void ToggleHidden(string id)
-    {
-        if (!_settings.HiddenDevices.Remove(id)) _settings.HiddenDevices.Add(id);
-        SaveAndRepublish();
-    }
-
-    private void Move(List<string> ids, int index, int delta)
-    {
-        int j = index + delta;
-        if (j < 0 || j >= ids.Count) return;
-        (ids[index], ids[j]) = (ids[j], ids[index]);
-        // Keep the remembered position of devices that are not connected right now, after the current ones.
-        _settings.DeviceOrder = ids.Concat(_settings.DeviceOrder.Where(id => !ids.Contains(id))).ToList();
-        SaveAndRepublish();
-    }
-
-    private static bool SafeStartupEnabled()
-    {
-        try { return Startup.IsEnabled; } catch { return false; }
     }
 
     private void RunDiagnostics()
@@ -404,6 +253,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         SystemEvents.UserPreferenceChanged -= OnThemeChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
+        _settingsWindow?.Close();
         _layoutTimer.Stop();
         _monitor.Dispose();
         _taskbars.Dispose();

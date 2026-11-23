@@ -5,16 +5,22 @@ namespace Konnichiwatt.UI;
 /// <summary>Renders every display style with sample devices onto a taskbar-coloured PNG (dev aid: <c>--preview out.png</c>).</summary>
 internal static class PreviewRenderer
 {
-    public static void Save(string path)
+    /// <summary>Example devices (used by the preview sheet and by the settings preview when nothing is connected).</summary>
+    public static List<DeviceBattery> Samples()
     {
         var now = DateTime.Now;
-        var devices = new List<DeviceBattery>
+        return new List<DeviceBattery>
         {
             new("h", "Headset", DeviceKind.Headset, 28, ChargeState.Discharging, "x", LastSeen: now),
             new("m", "Mouse", DeviceKind.Mouse, 62, ChargeState.Discharging, "x", LastSeen: now),
             new("c", "Pad", DeviceKind.Controller, 100, ChargeState.Charging, "x", LastSeen: now),
             new("k", "Pad 2", DeviceKind.Controller, 12, ChargeState.Discharging, "x", LastSeen: now),
         };
+    }
+
+    public static void Save(string path)
+    {
+        var devices = Samples();
 
         const int h = 48;
         var rows = new List<(string Label, Bitmap Bmp, bool Light)>();

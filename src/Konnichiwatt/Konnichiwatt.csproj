@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,12 +6,14 @@
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
+    <!-- No WinForms designer in this project: designer-serialization warnings don't apply -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Konnichiwatt</AssemblyName>
     <RootNamespace>Konnichiwatt</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Product>Konnichiwatt</Product>
     <SatelliteResourceLanguages>es;en</SatelliteResourceLanguages>
   </PropertyGroup>
@@ -21,3 +23,4 @@
   </ItemGroup>
 
 </Project>
+

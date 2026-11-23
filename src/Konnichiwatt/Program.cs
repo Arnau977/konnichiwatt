@@ -34,6 +34,12 @@ internal static class Program
             UI.PreviewRenderer.Save(args[1]);
             return;
         }
+        if (args.Length == 2 && args[0] == "--settings-shot")
+        {
+            ApplicationConfiguration.Initialize();
+            UI.SettingsWindow.SaveScreenshots(args[1], new AppSettings());
+            return;
+        }
 
         using var mutex = new Mutex(true, @"Local\Konnichiwatt.SingleInstance", out bool first);
         if (!first) return;
@@ -48,6 +54,6 @@ internal static class Program
 #pragma warning disable WFO5001 // dark context menus follow the Windows theme
         Application.SetColorMode(SystemColorMode.System);
 #pragma warning restore WFO5001
-        Application.Run(new TrayApplicationContext());
+        Application.Run(new TrayApplicationContext(openSettings: args.Contains("--settings")));
     }
 }
