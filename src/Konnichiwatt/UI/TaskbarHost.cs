@@ -14,6 +14,7 @@ internal sealed class TaskbarHost : IDisposable
     private readonly TaskbarAnchorService _anchors = new();
     private readonly Dictionary<IntPtr, TaskbarWidget> _widgets = new();
     private IReadOnlyList<DeviceBattery> _devices = Array.Empty<DeviceBattery>();
+    private bool _fallbackLogged;
 
     public event Action? LeftClick;
     public event Action? RightClick;
@@ -48,6 +49,16 @@ internal sealed class TaskbarHost : IDisposable
             var h = IntPtr.Zero;
             while ((h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
                 if (Shows(h, false)) wanted.Add((h, false));
+
+            // The chosen screens may have no taskbar right now (Windows' "show my taskbar on all displays" is
+            // off, or that monitor is unplugged): never leave the user without the widget — use the main taskbar.
+            bool fallback = wanted.Count == 0 && main != IntPtr.Zero;
+            if (fallback)
+            {
+                wanted.Add((main, true));
+                if (!_fallbackLogged) Log.Write("Ninguna pantalla elegida tiene barra de tareas: se usa la principal");
+            }
+            _fallbackLogged = fallback;
         }
         _anchors.Track(wanted.Where(t => !t.Primary).Select(t => t.Handle));
 

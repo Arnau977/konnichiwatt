@@ -341,12 +341,15 @@ internal sealed class SettingsWindow : Form
     {
         var monitors = Monitors.All();
         var primary = monitors.FirstOrDefault(m => m.Primary);
+        var withTaskbar = Monitors.WithTaskbar(monitors);
+        var usable = monitors.Where(m => m.Primary || withTaskbar.Contains(m.Id)).ToList();
         foreach (var m in monitors)
         {
-            var toggle = new ToggleSwitch(_s.ShowsOnMonitor(m.Id, m.Primary)) { Enabled = monitors.Count > 1 };
+            bool hasTaskbar = m.Primary || withTaskbar.Contains(m.Id);
+            var toggle = new ToggleSwitch(hasTaskbar && _s.ShowsOnMonitor(m.Id, m.Primary)) { Enabled = hasTaskbar && usable.Count > 1 };
             toggle.CheckedChanged += (_, _) =>
             {
-                var chosen = monitors.Where(x => _s.ShowsOnMonitor(x.Id, x.Primary)).Select(x => x.Id).ToHashSet();
+                var chosen = usable.Where(x => _s.ShowsOnMonitor(x.Id, x.Primary)).Select(x => x.Id).ToHashSet();
                 if (toggle.Checked) chosen.Add(m.Id); else chosen.Remove(m.Id);
                 if (chosen.Count == 0) { toggle.SetSilently(true); return; } // the widget must live somewhere
                 // Remember choices for monitors that are unplugged right now.
@@ -362,7 +365,10 @@ internal sealed class SettingsWindow : Form
             parts.Add($"{m.Bounds.Width} × {m.Bounds.Height}");
             if (!m.Primary && primary != null) parts.Add(RelativePosition(m.Bounds, primary.Bounds));
             if (monitors.Count == 1) parts.Add("única pantalla");
-            _content.Controls.Add(Card("", title, string.Join(" · ", parts), toggle));
+            var description = hasTaskbar
+                ? string.Join(" · ", parts)
+                : "Sin barra de tareas (actívala en los ajustes de Windows)";
+            _content.Controls.Add(Card("", title, description, toggle));
         }
     }
 

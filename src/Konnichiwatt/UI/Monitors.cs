@@ -29,6 +29,21 @@ internal static class Monitors
             .ToList();
     }
 
+    /// <summary>
+    /// Ids of the monitors that currently have a taskbar. The main one always does; secondary ones only while
+    /// Windows' "Show my taskbar on all displays" is on (Explorer then creates a Shell_SecondaryTrayWnd for each).
+    /// </summary>
+    public static HashSet<string> WithTaskbar(IReadOnlyList<MonitorDesc> monitors)
+    {
+        var ids = new HashSet<string>();
+        var main = Native.FindWindow("Shell_TrayWnd", null);
+        if (main != IntPtr.Zero && IdForWindow(main, monitors) is string mainId) ids.Add(mainId);
+        var h = IntPtr.Zero;
+        while ((h = Native.FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
+            if (IdForWindow(h, monitors) is string id) ids.Add(id);
+        return ids;
+    }
+
     /// <summary>Id of the monitor a window (e.g. a taskbar) is on.</summary>
     public static string? IdForWindow(IntPtr hwnd, IReadOnlyList<MonitorDesc> monitors)
     {
