@@ -1,3 +1,5 @@
+using Konnichiwatt.Core;
+
 namespace Konnichiwatt.UI;
 
 /// <summary>Tiny "rename device" prompt. Returns null on cancel, "" to restore the original name.</summary>
@@ -7,7 +9,7 @@ internal sealed class RenameDialog : Form
 
     private RenameDialog(string originalName, string currentName)
     {
-        Text = "Cambiar nombre";
+        Text = L.RenameTitle;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         ShowInTaskbar = true;
@@ -19,16 +21,16 @@ internal sealed class RenameDialog : Form
 
         var label = new Label
         {
-            Text = $"Nombre para «{originalName}»:",
+            Text = L.NameFor(originalName),
             Dock = DockStyle.Top,
             AutoSize = false,
             Height = 28,
         };
         _box.Text = currentName;
 
-        var ok = new Button { Text = "Aceptar", DialogResult = DialogResult.OK, AutoSize = true };
-        var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, AutoSize = true };
-        var reset = new Button { Text = "Nombre original", AutoSize = true };
+        var ok = new Button { Text = L.Ok, DialogResult = DialogResult.OK, AutoSize = true };
+        var cancel = new Button { Text = L.Cancel, DialogResult = DialogResult.Cancel, AutoSize = true };
+        var reset = new Button { Text = L.OriginalName, AutoSize = true };
         reset.Click += (_, _) => { _box.Text = ""; DialogResult = DialogResult.OK; };
 
         var buttons = new FlowLayoutPanel

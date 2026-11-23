@@ -19,15 +19,15 @@ internal sealed class SettingsWindow : Form
         Action Diagnostics,
         Action TestNotification);
 
-    private static readonly (string Glyph, string Title)[] Pages =
+    private static (string Glyph, string Title)[] Pages => new[]
     {
-        ("", "Dispositivos"), ("", "Apariencia"), ("", "Avisos"), ("", "General"),
+        ("", L.PageDevices), ("", L.PageAppearance), ("", L.PageAlerts), ("", L.PageGeneral),
     };
 
-    private static readonly (string Label, DeviceKind Kind)[] IconChoices =
+    private static (string Label, DeviceKind Kind)[] IconChoices => new[]
     {
-        ("Auriculares", DeviceKind.Headset), ("Ratón", DeviceKind.Mouse), ("Teclado", DeviceKind.Keyboard),
-        ("Mando", DeviceKind.Controller), ("Altavoz", DeviceKind.Speaker), ("Otro", DeviceKind.Other),
+        (L.Headset, DeviceKind.Headset), (L.Mouse, DeviceKind.Mouse), (L.Keyboard, DeviceKind.Keyboard),
+        (L.Controller, DeviceKind.Controller), (L.Speaker, DeviceKind.Speaker), (L.Other, DeviceKind.Other),
     };
 
     private readonly AppSettings _s;
@@ -44,7 +44,7 @@ internal sealed class SettingsWindow : Form
     {
         _s = settings;
         _cb = callbacks;
-        Text = "Ajustes de Konnichiwatt";
+        Text = L.SettingsTitle;
         if (icon != null) Icon = icon;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -81,7 +81,7 @@ internal sealed class SettingsWindow : Form
             using var sub = F.Text(12);
             F.DrawText(e.Graphics, Theme.Bolt, bolt, F.Accent, new RectangleF(F.Pf(18), F.Pf(18), F.Pf(26), F.Pf(28)));
             F.DrawText(e.Graphics, "Konnichiwatt", name, F.Fg, new RectangleF(F.Pf(48), F.Pf(14), F.Pf(170), F.Pf(24)));
-            F.DrawText(e.Graphics, "konnichiwa + watt", sub, F.Fg2, new RectangleF(F.Pf(48), F.Pf(36), F.Pf(170), F.Pf(18)));
+            F.DrawText(e.Graphics, L.Tagline, sub, F.Fg2, new RectangleF(F.Pf(48), F.Pf(36), F.Pf(170), F.Pf(18)));
         };
         var navList = new FlowLayoutPanel
         {
@@ -246,8 +246,8 @@ internal sealed class SettingsWindow : Form
         _rows.Clear();
 
         if (arranged.Count == 0 && absentHidden.Count == 0)
-            _content.Controls.Add(Card("", "Ningún dispositivo detectado",
-                "Enciende tus dispositivos inalámbricos; aparecerán aquí en unos segundos.", null));
+            _content.Controls.Add(Card("", L.NoDevicesDetected,
+                L.NoDevicesHint, null));
 
         // Connected devices live in a list that animates reordering (drag the grip or use the arrows).
         _list = null;
@@ -288,12 +288,12 @@ internal sealed class SettingsWindow : Form
             _content.Controls.Add(row);
         }
 
-        _content.Controls.Add(SectionLabel("Opciones"));
-        _content.Controls.Add(Card("", "Ocultar los que se están cargando",
-            "Mientras un dispositivo carga no ocupa sitio en la barra", Toggle(_s.HideWhileCharging, v => _s.HideWhileCharging = v)));
-        var reset = _resetOrder = new FlatButton("Restablecer") { Enabled = _s.DeviceOrder.Count > 0 };
+        _content.Controls.Add(SectionLabel(L.Options));
+        _content.Controls.Add(Card("", L.HideWhileCharging,
+            L.HideWhileChargingDesc, Toggle(_s.HideWhileCharging, v => _s.HideWhileCharging = v)));
+        var reset = _resetOrder = new FlatButton(L.Reset) { Enabled = _s.DeviceOrder.Count > 0 };
         reset.Click += (_, _) => { _s.DeviceOrder.Clear(); Changed(); RefreshDevices(force: true); };
-        _content.Controls.Add(Card("", "Orden original", "Vuelve al orden en que se detectan los dispositivos", reset));
+        _content.Controls.Add(Card("", L.OriginalOrder, L.OriginalOrderDesc, reset));
         _content.ResumeLayout();
     }
 
@@ -314,15 +314,15 @@ internal sealed class SettingsWindow : Form
         {
             // Per-device low-battery threshold; "General" follows the global one.
             var menu = new ContextMenuStrip();
-            menu.Items.Add(new ToolStripMenuItem("Aviso de batería baja") { Enabled = false });
+            menu.Items.Add(new ToolStripMenuItem(L.LowBatteryAlert) { Enabled = false });
             var own = OwnThreshold(row.Id);
-            var general = new ToolStripMenuItem($"General ({_s.LowBatteryThreshold} %)") { Checked = own == null };
+            var general = new ToolStripMenuItem(L.GeneralThreshold(_s.LowBatteryThreshold)) { Checked = own == null };
             general.Click += (_, _) => { _s.CustomizationFor(row.Id).LowThreshold = null; Changed(); RefreshDevices(); };
             menu.Items.Add(general);
             menu.Items.Add(new ToolStripSeparator());
             foreach (var t in new[] { 5, 10, 15, 20, 25, 30, 40, 50 })
             {
-                var item = new ToolStripMenuItem($"Al {t} %") { Checked = own == t };
+                var item = new ToolStripMenuItem(L.AtPercent(t)) { Checked = own == t };
                 item.Click += (_, _) => { _s.CustomizationFor(row.Id).LowThreshold = t; Changed(); RefreshDevices(); };
                 menu.Items.Add(item);
             }
@@ -333,7 +333,7 @@ internal sealed class SettingsWindow : Form
         {
             var menu = new ContextMenuStrip();
             var custom = _s.Customizations.TryGetValue(row.Id, out var c) ? c.Kind : null;
-            var auto = new ToolStripMenuItem($"Automático ({Theme.KindName(original.Kind).ToLowerInvariant()})") { Checked = custom == null };
+            var auto = new ToolStripMenuItem(L.Automatic(Theme.KindName(original.Kind).ToLowerInvariant())) { Checked = custom == null };
             auto.Click += (_, _) => { _s.CustomizationFor(row.Id).Kind = null; Changed(); RefreshDevices(); };
             menu.Items.Add(auto);
             menu.Items.Add(new ToolStripSeparator());
@@ -368,22 +368,22 @@ internal sealed class SettingsWindow : Form
         }, _s);
         _content.Controls.Add(_preview);
 
-        var display = new Segmented(new[] { "Porcentaje", "Icono", "Ambos" }, (int)_s.Display);
+        var display = new Segmented(L.DisplayModes, (int)_s.Display);
         display.SelectedChanged += (_, _) => { _s.Display = (BatteryDisplay)display.Selected; Changed(); };
-        _content.Controls.Add(Card("", "Mostrar batería como", "Número, batería o ambos", display));
+        _content.Controls.Add(Card("", L.ShowBatteryAs, L.ShowBatteryAsDesc, display));
 
-        _content.Controls.Add(Card("", "Texto e iconos gruesos", "Más legible en monitores con escala al 100 %",
+        _content.Controls.Add(Card("", L.BoldText, L.BoldTextDesc,
             Toggle(_s.BoldStyle, v => _s.BoldStyle = v)));
 
         var below = new Slider(10, 90, 5, _s.DiscreetBelow, v => $"{v} %") { Enabled = _s.DiscreetMode };
         below.ValueChanged += (_, _) => { _s.DiscreetBelow = below.Value; Changed(); };
         var discreet = new ToggleSwitch(_s.DiscreetMode);
         discreet.CheckedChanged += (_, _) => { _s.DiscreetMode = discreet.Checked; below.Enabled = discreet.Checked; Changed(); };
-        _content.Controls.Add(Card("", "Modo discreto", "En la barra solo aparecen los que tienen poca batería", discreet));
-        _content.Controls.Add(Card("", "Mostrar cuando bajen del", "La bandeja los sigue mostrando todos", below));
+        _content.Controls.Add(Card("", L.DiscreetMode, L.DiscreetModeDesc, discreet));
+        _content.Controls.Add(Card("", L.ShowWhenBelow, L.ShowWhenBelowDesc, below));
 
-        _content.Controls.Add(SectionLabel("Dónde se muestra"));
-        _content.Controls.Add(Card("", "Mostrar en la barra de tareas", "Si lo desactivas, solo queda el icono de la bandeja",
+        _content.Controls.Add(SectionLabel(L.WhereShown));
+        _content.Controls.Add(Card("", L.ShowOnTaskbar, L.ShowOnTaskbarDesc,
             Toggle(_s.ShowTaskbarWidget, v => _s.ShowTaskbarWidget = v)));
         AddMonitorCards();
     }
@@ -410,27 +410,27 @@ internal sealed class SettingsWindow : Form
                 Changed();
             };
 
-            bool friendly = !m.Name.StartsWith("Pantalla ", StringComparison.Ordinal);
-            var title = friendly ? $"{m.Name}  ·  pantalla {m.Number}" : m.Name;
+            bool friendly = m.Friendly;
+            var title = friendly ? $"{m.Name}  ·  {L.ScreenNumber(m.Number)}" : m.Name;
             var parts = new List<string>();
-            if (m.Primary) parts.Add("Principal");
+            if (m.Primary) parts.Add(L.Primary);
             parts.Add($"{m.Bounds.Width} × {m.Bounds.Height}");
             if (!m.Primary && primary != null) parts.Add(RelativePosition(m.Bounds, primary.Bounds));
-            if (monitors.Count == 1) parts.Add("única pantalla");
+            if (monitors.Count == 1) parts.Add(L.OnlyScreen);
             var description = hasTaskbar
                 ? string.Join(" · ", parts)
-                : "Sin barra de tareas (actívala en los ajustes de Windows)";
+                : L.NoTaskbarOnScreen;
             _content.Controls.Add(Card("", title, description, toggle));
         }
     }
 
     private static string RelativePosition(Rectangle r, Rectangle primary)
     {
-        if (r.Right <= primary.Left) return "a la izquierda";
-        if (r.Left >= primary.Right) return "a la derecha";
-        if (r.Bottom <= primary.Top) return "arriba";
-        if (r.Top >= primary.Bottom) return "abajo";
-        return "superpuesta";
+        if (r.Right <= primary.Left) return L.ToTheLeft;
+        if (r.Left >= primary.Right) return L.ToTheRight;
+        if (r.Bottom <= primary.Top) return L.Above;
+        if (r.Top >= primary.Bottom) return L.Below;
+        return L.Overlapping;
     }
 
     /// <summary>Monitors were plugged/unplugged or rearranged: refresh the list if it's on screen.</summary>
@@ -448,15 +448,15 @@ internal sealed class SettingsWindow : Form
         var low = new ToggleSwitch(_s.LowBatteryNotifications);
         low.CheckedChanged += (_, _) => { _s.LowBatteryNotifications = low.Checked; threshold.Enabled = low.Checked; Changed(); };
 
-        _content.Controls.Add(Card("", "Aviso de batería baja", "Una notificación cuando un dispositivo se está quedando sin batería", low));
-        _content.Controls.Add(Card("", "Avisar al bajar del", "General; cada dispositivo puede tener el suyo (⋯)", threshold));
-        _content.Controls.Add(Card("", "Aviso de carga completa", "Cuando un dispositivo que estaba cargando llega al 100 %",
+        _content.Controls.Add(Card("", L.LowBatteryAlert, L.LowBatteryAlertDesc, low));
+        _content.Controls.Add(Card("", L.AlertWhenBelow, L.AlertWhenBelowDesc, threshold));
+        _content.Controls.Add(Card("", L.FullChargeAlert, L.FullChargeAlertDesc,
             Toggle(_s.ChargeCompleteNotifications, v => _s.ChargeCompleteNotifications = v)));
 
-        var test = new FlatButton("Enviar aviso de prueba");
+        var test = new FlatButton(L.SendTest);
         test.Click += (_, _) => _cb.TestNotification();
-        _content.Controls.Add(SectionLabel("Comprobar"));
-        _content.Controls.Add(Card("", "Probar las notificaciones", "Si no aparece, revisa «No molestar»", test));
+        _content.Controls.Add(SectionLabel(L.Check));
+        _content.Controls.Add(Card("", L.TestNotifications, L.TestNotificationsDesc, test));
     }
 
     private void BuildGeneral()
@@ -469,34 +469,45 @@ internal sealed class SettingsWindow : Form
             try { Startup.IsEnabled = start.Checked; }
             catch (Exception e) { Log.Error("Startup toggle", e); start.SetSilently(!start.Checked); }
         };
-        _content.Controls.Add(Card("", "Iniciar con Windows", "Konnichiwatt se abre solo al iniciar sesión", start));
+        _content.Controls.Add(Card("", L.StartWithWindows, L.StartWithWindowsDesc, start));
 
         var secs = new[] { 15, 30, 60, 300 };
         var freq = new Segmented(new[] { "15 s", "30 s", "1 min", "5 min" }, Math.Max(0, Array.IndexOf(secs, _s.PollSeconds)));
         freq.SelectedChanged += (_, _) => { _s.PollSeconds = secs[freq.Selected]; Changed(); };
-        _content.Controls.Add(Card("", "Frecuencia de lectura", "Al conectar uno, al momento", freq));
+        _content.Controls.Add(Card("", L.PollFrequency, L.PollFrequencyDesc, freq));
 
-        var refresh = new FlatButton("Actualizar ahora");
+        var languages = new[] { "auto", "es", "en" };
+        var language = new Segmented(L.LanguageOptions, Math.Max(0, Array.IndexOf(languages, _s.Language)));
+        language.SelectedChanged += (_, _) =>
+        {
+            _s.Language = languages[language.Selected];
+            L.Init(_s.Language);
+            Changed();
+            BeginInvoke(ApplyTheme); // rebuild the whole window in the new language
+        };
+        _content.Controls.Add(Card("", L.Language_, L.LanguageDesc, language));
+
+        var refresh = new FlatButton(L.RefreshNow);
         refresh.Click += (_, _) => _cb.PollNow();
-        _content.Controls.Add(Card("", "Leer la batería ahora", null, refresh));
+        _content.Controls.Add(Card("", L.ReadNow, null, refresh));
 
-        _content.Controls.Add(SectionLabel("Ayuda"));
-        var diag = new FlatButton("Generar informe");
+        _content.Controls.Add(SectionLabel(L.Help));
+        var diag = new FlatButton(L.GenerateReport);
         diag.Click += (_, _) => _cb.Diagnostics();
-        _content.Controls.Add(Card("", "Diagnóstico", "Útil si un dispositivo no aparece", diag));
+        _content.Controls.Add(Card("", L.Diagnostics, L.DiagnosticsDesc, diag));
 
-        var open = new FlatButton("Abrir");
+        var open = new FlatButton(L.Open);
         open.Click += (_, _) =>
         {
             try { Process.Start(new ProcessStartInfo(Log.Directory) { UseShellExecute = true }); }
             catch (Exception e) { Log.Error("Open folder", e); }
         };
-        _content.Controls.Add(Card("", "Carpeta de registros", Log.Directory, open));
+        _content.Controls.Add(Card("", L.LogsFolder, Log.Directory, open));
 
         var version = typeof(SettingsWindow).Assembly.GetName().Version;
         _content.Controls.Add(new Label
         {
-            Text = $"Konnichiwatt {version?.ToString(3)} · konnichiwa (こんにちは, hola) + watt",
+            Text = L.Footer(version?.ToString(3) ?? ""),
             AutoSize = false,
             Width = CardWidth,
             Height = F.Px(40),
@@ -510,9 +521,9 @@ internal sealed class SettingsWindow : Form
     /// <summary>Fake estimates for the sample devices used by the demo / screenshots.</summary>
     internal static string? SampleEstimate(string id) => id switch
     {
-        "h" => "≈ 9 h restantes",
-        "c" => "lleno en ≈ 25 min",
-        "k" => "≈ 2 h restantes",
+        "h" => L.TimeLeft("9 h"),
+        "c" => L.FullIn("25 min"),
+        "k" => L.TimeLeft("2 h"),
         _ => null,
     };
 
@@ -684,7 +695,7 @@ internal sealed class DeviceRow : SettingCard
             ? Theme.StateText(shown)
             : $"{original.Name} · {Theme.StateText(shown).ToLowerInvariant()}";
         if (estimate != null && !shown.Stale) _subtitle += $" · {estimate}";
-        if (ownThreshold is int t) _subtitle += $" · aviso al {t} %";
+        if (ownThreshold is int t) _subtitle += $" · {L.AlertAt(t)}";
         _percent = Theme.PercentText(shown, allowApprox: true);
         _charging = shown.IsCharging;
         _low = low;
@@ -696,7 +707,7 @@ internal sealed class DeviceRow : SettingCard
         _icon.Text = Theme.Glyph(kind);
         _name.Text = _committed = name;
         _name.ReadOnly = true;
-        _subtitle = "No conectado · oculto";
+        _subtitle = L.NotConnectedHidden;
         _percent = "";
         Invalidate();
     }
@@ -744,7 +755,7 @@ internal sealed class PreviewCard : SettingCard
         base.OnPaint(e);
         var g = e.Graphics;
         using var tf = F.Text(12);
-        F.DrawText(g, "Vista previa", tf, F.Fg2, new RectangleF(F.Pf(18), F.Pf(8), F.Pf(200), F.Pf(20)));
+        F.DrawText(g, L.Preview, tf, F.Fg2, new RectangleF(F.Pf(18), F.Pf(8), F.Pf(200), F.Pf(20)));
 
         bool lightBar = Theme.IsLightTaskbar();
         var strip = new RectangleF(F.Pf(18), F.Pf(36), Width - F.Pf(36), F.Pf(56));

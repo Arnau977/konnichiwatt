@@ -60,8 +60,9 @@ internal static class Program
                 new UI.SettingsWindow.Callbacks(() => samples, UI.SettingsWindow.SampleEstimate, () => { }, () => { }, () => { }, () => { }), null));
             return;
         }
-        if (args.Length == 2 && args[0] == "--settings-shot")
+        if (args.Length >= 2 && args[0] == "--settings-shot")
         {
+            if (args.Length > 2) L.Init(args[2]); // optional language: es / en
             ApplicationConfiguration.Initialize();
             UI.SettingsWindow.SaveScreenshots(args[1], new AppSettings());
             return;

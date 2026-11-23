@@ -126,12 +126,12 @@ internal static class Theme
 
     public static string KindName(DeviceKind kind) => kind switch
     {
-        DeviceKind.Headset => "Auriculares",
-        DeviceKind.Mouse => "Ratón",
-        DeviceKind.Keyboard => "Teclado",
-        DeviceKind.Controller => "Mando",
-        DeviceKind.Speaker => "Altavoz",
-        _ => "Dispositivo",
+        DeviceKind.Headset => L.Headset,
+        DeviceKind.Mouse => L.Mouse,
+        DeviceKind.Keyboard => L.Keyboard,
+        DeviceKind.Controller => L.Controller,
+        DeviceKind.Speaker => L.Speaker,
+        _ => L.Device,
     };
 
     public static string StateText(DeviceBattery d)
@@ -139,16 +139,16 @@ internal static class Theme
         if (d.Stale)
         {
             var ago = DateTime.Now - (d.LastSeen ?? DateTime.Now);
-            return ago.TotalMinutes < 1 ? "En reposo"
-                 : ago.TotalHours < 1 ? $"En reposo · dato de hace {(int)ago.TotalMinutes} min"
-                 : $"En reposo · dato de hace {(int)ago.TotalHours} h";
+            return ago.TotalMinutes < 1 ? L.Asleep
+                 : ago.TotalHours < 1 ? L.AsleepMinutesAgo((int)ago.TotalMinutes)
+                 : L.AsleepHoursAgo((int)ago.TotalHours);
         }
         return d.State switch
         {
-            ChargeState.Charging => "Cargando",
-            ChargeState.Full => "Cargado",
-            ChargeState.Discharging => "Con batería",
-            _ => "Conectado",
+            ChargeState.Charging => L.Charging,
+            ChargeState.Full => L.Charged,
+            ChargeState.Discharging => L.OnBattery,
+            _ => L.Connected,
         };
     }
 

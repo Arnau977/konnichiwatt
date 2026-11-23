@@ -29,6 +29,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     public TrayApplicationContext(bool openSettings = false)
     {
+        L.Init(_settings.Language);
         _lastThresholds = ThresholdsSignature();
         _popup.IsLow = _settings.IsLow;
         _popup.History = _history;
@@ -162,7 +163,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             PollNow: _monitor.RequestPoll,
             Diagnostics: RunDiagnostics,
             TestNotification: () => _tray.ShowBalloonTip(5000, "Konnichiwatt 👋⚡",
-                "Así se verán los avisos de batería baja y de carga completa.", ToolTipIcon.Info)),
+                L.TestNotificationBody, ToolTipIcon.Info)),
             AppIcon());
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
@@ -195,8 +196,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _trayIconHandle = hicon;
 
         var tip = visible.Count == 0
-            ? "Konnichiwatt\nNingún dispositivo detectado"
-            : string.Join("\n", visible.Select(d => $"{d.Name}: {Theme.PercentText(d, true)}{(d.IsCharging ? " ⚡" : "")}{(d.Stale ? " (reposo)" : "")}"));
+            ? $"Konnichiwatt\n{L.NoDevicesDetected}"
+            : string.Join("\n", visible.Select(d => $"{d.Name}: {Theme.PercentText(d, true)}{(d.IsCharging ? " ⚡" : "")}{(d.Stale ? $" ({L.AsleepShort})" : "")}"));
         _tray.Text = tip.Length > 127 ? tip[..127] : tip;
     }
 
@@ -210,7 +211,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             int threshold = _settings.ThresholdFor(d.Id);
             bool low = p <= threshold && !d.IsCharging;
             if (low && _lowNotified.Add(d.Id) && _settings.LowBatteryNotifications)
-                _tray.ShowBalloonTip(8000, "Batería baja", $"{d.Name}: {p}%", ToolTipIcon.Warning);
+                _tray.ShowBalloonTip(8000, L.LowBatteryTitle, $"{d.Name}: {p}%", ToolTipIcon.Warning);
             else if (!low && (d.IsCharging || p > threshold + 5))
                 _lowNotified.Remove(d.Id);
         }
@@ -231,7 +232,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             else if (complete)
             {
                 if (_chargingIncomplete.Remove(d.Id) && _settings.ChargeCompleteNotifications)
-                    _tray.ShowBalloonTip(8000, "Carga completa", $"{d.Name} está al 100 %. Ya puedes desconectarlo.", ToolTipIcon.Info);
+                    _tray.ShowBalloonTip(8000, L.ChargeCompleteTitle, L.ChargeCompleteBody(d.Name), ToolTipIcon.Info);
             }
             else
                 _chargingIncomplete.Remove(d.Id); // unplugged before finishing
@@ -253,19 +254,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _menu.Items.Clear();
         var visible = Visible;
         if (visible.Count == 0)
-            _menu.Items.Add(new ToolStripMenuItem("Ningún dispositivo visible") { Enabled = false });
+            _menu.Items.Add(new ToolStripMenuItem(L.NoVisibleDevices) { Enabled = false });
         foreach (var d in visible)
         {
             var text = $"{d.Name}  —  {Theme.PercentText(d, true)} {Theme.StateText(d).ToLowerInvariant()}";
             _menu.Items.Add(new ToolStripMenuItem(text) { Enabled = false });
         }
         _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add("Actualizar ahora", null, (_, _) => _monitor.RequestPoll());
-        var settings = new ToolStripMenuItem("Ajustes…", null, (_, _) => OpenSettings());
+        _menu.Items.Add(L.RefreshNow, null, (_, _) => _monitor.RequestPoll());
+        var settings = new ToolStripMenuItem(L.SettingsMenu, null, (_, _) => OpenSettings());
         settings.Font = new Font(settings.Font, FontStyle.Bold);
         _menu.Items.Add(settings);
         _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add("Salir", null, (_, _) => ExitThread());
+        _menu.Items.Add(L.Exit, null, (_, _) => ExitThread());
     }
 
     private void RunDiagnostics()

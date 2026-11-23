@@ -19,7 +19,7 @@ public sealed class PlayStationProvider : IBatteryProvider
     {
         [0x05C4] = ("DualShock 4", false),
         [0x09CC] = ("DualShock 4", false),
-        [0x0BA0] = ("DualShock 4 (adaptador)", false),
+        [0x0BA0] = (L.Ds4Adapter, false),
         [0x0CE6] = ("DualSense", true),
         [0x0DF2] = ("DualSense Edge", true),
     };

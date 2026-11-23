@@ -106,9 +106,9 @@ public sealed class BatteryHistory
     {
         var t = Estimate(For(id), out bool toFull);
         if (t is not TimeSpan span) return null;
-        string amount = span.TotalMinutes < 60 ? $"{Math.Max(1, (int)Math.Round(span.TotalMinutes / 5) * 5)} min"
-                      : span.TotalHours < 48 ? $"{Math.Round(span.TotalHours)} h"
-                      : $"{Math.Round(span.TotalDays)} días";
-        return toFull ? $"lleno en ≈ {amount}" : $"≈ {amount} restantes";
+        string amount = span.TotalMinutes < 60 ? L.Minutes(Math.Max(1, (int)Math.Round(span.TotalMinutes / 5) * 5))
+                      : span.TotalHours < 48 ? L.Hours(Math.Round(span.TotalHours))
+                      : L.Days(Math.Round(span.TotalDays));
+        return toFull ? L.FullIn(amount) : L.TimeLeft(amount);
     }
 }

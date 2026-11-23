@@ -94,7 +94,7 @@ public sealed class GameSirProvider : IBatteryProvider
     private static string GameSirName(int pid) => pid switch
     {
         0x103E => "GameSir T4n Pro",
-        _ => "Mando GameSir",
+        _ => L.GameSirController,
     };
 
     public void Dispose() { }

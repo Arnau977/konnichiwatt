@@ -44,7 +44,7 @@ public sealed class XboxProvider : IBatteryProvider
             var raw = RawGameController.FromGameController(gp);
             // Third-party pads emulating an Xbox 360 report a fake 100 %; they have their own providers.
             if (raw != null && SkipVendors.Contains(raw.HardwareVendorId)) continue;
-            var name = string.IsNullOrWhiteSpace(raw?.DisplayName) ? "Mando Xbox" : raw!.DisplayName;
+            var name = string.IsNullOrWhiteSpace(raw?.DisplayName) ? L.XboxController : raw!.DisplayName;
             var id = "xbox:" + (raw?.NonRoamableId ?? name);
 
             var state = report.Status switch

@@ -6,7 +6,8 @@ namespace Konnichiwatt.UI;
 /// <param name="Id">Stable identifier: the monitor's device path (survives reboots and re-numbering).</param>
 /// <param name="Name">Commercial name from the EDID (e.g. "LG ULTRAGEAR"), or "Pantalla N".</param>
 /// <param name="Number">Windows display number (the N in \\.\DISPLAYN).</param>
-internal sealed record MonitorDesc(string Id, string Name, string GdiName, Rectangle Bounds, bool Primary, int Number);
+/// <param name="Friendly">The name comes from the monitor (EDID), not our "Display N" fallback.</param>
+internal sealed record MonitorDesc(string Id, string Name, string GdiName, Rectangle Bounds, bool Primary, int Number, bool Friendly);
 
 /// <summary>
 /// Connected monitors with friendly names and stable ids, via the Display Configuration API
@@ -22,8 +23,9 @@ internal static class Monitors
             {
                 int number = ParseNumber(s.DeviceName);
                 var (id, friendly) = names.TryGetValue(s.DeviceName, out var n) ? n : (s.DeviceName, "");
-                var name = string.IsNullOrWhiteSpace(friendly) ? $"Pantalla {number}" : friendly;
-                return new MonitorDesc(id.ToLowerInvariant(), name, s.DeviceName, s.Bounds, s.Primary, number);
+                bool hasName = !string.IsNullOrWhiteSpace(friendly);
+                var name = hasName ? friendly : L.ScreenN(number);
+                return new MonitorDesc(id.ToLowerInvariant(), name, s.DeviceName, s.Bounds, s.Primary, number, hasName);
             })
             .OrderByDescending(m => m.Primary).ThenBy(m => m.Number)
             .ToList();
