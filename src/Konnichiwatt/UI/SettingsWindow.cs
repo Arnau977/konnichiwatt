@@ -221,11 +221,11 @@ internal sealed class SettingsWindow : Form
     public void RefreshDevices(bool force = false)
     {
         if (_page != 0 || IsDisposed) return;
-        if (_dragRow != null) { _refreshPending |= force; return; } // don't pull the row out from under the mouse
+        if (_list?.IsDragging == true) return; // don't rebuild the row under the pointer; the next poll will
         var raw = _cb.RawDevices();
         var arranged = _s.Arrange(raw);
         var absentHidden = _s.HiddenDevices.Where(id => arranged.All(d => d.Id != id)).ToList();
-        var signature = string.Join("|", arranged.Select(d => d.Id)) + "#" + string.Join("|", absentHidden);
+        var signature = Signature(arranged.Select(d => d.Id), absentHidden);
 
         if (!force && signature == _rowsSignature)
         {
@@ -248,18 +248,32 @@ internal sealed class SettingsWindow : Form
             _content.Controls.Add(Card("", "Ningún dispositivo detectado",
                 "Enciende tus dispositivos inalámbricos; aparecerán aquí en unos segundos.", null));
 
-        var ids = arranged.Select(d => d.Id).ToList();
-        for (int i = 0; i < arranged.Count; i++)
+        // Connected devices live in a list that animates reordering (drag the grip or use the arrows).
+        _list = null;
+        if (arranged.Count > 0)
         {
-            var d = arranged[i];
-            var orig = raw.First(a => a.Id == d.Id);
-            int index = i;
-            var row = new DeviceRow(d.Id, CardWidth, canUp: i > 0, canDown: i < arranged.Count - 1, connected: true);
-            row.Update(d, orig);
-            row.Shown = !_s.HiddenDevices.Contains(d.Id);
-            WireRow(row, orig, ids, index);
-            _rows.Add(row);
-            _content.Controls.Add(row);
+            var rows = new List<DeviceRow>();
+            foreach (var d in arranged)
+            {
+                var orig = raw.First(a => a.Id == d.Id);
+                var row = new DeviceRow(d.Id, CardWidth, canUp: false, canDown: false, connected: true);
+                row.Update(d, orig);
+                row.Shown = !_s.HiddenDevices.Contains(d.Id);
+                WireRow(row, orig);
+                rows.Add(row);
+                _rows.Add(row);
+            }
+            _list = new DeviceListPanel(CardWidth);
+            _list.SetRows(rows);
+            _list.ScrollRequested += ScrollContentBy;
+            _list.OrderChanged += ids =>
+            {
+                _s.SetOrder(ids);
+                _rowsSignature = Signature(ids, absentHidden); // already showing this order: no rebuild needed
+                if (_resetOrder != null) _resetOrder.Enabled = true;
+                Changed();
+            };
+            _content.Controls.Add(_list);
         }
         foreach (var id in absentHidden)
         {
@@ -276,13 +290,16 @@ internal sealed class SettingsWindow : Form
         _content.Controls.Add(SectionLabel("Opciones"));
         _content.Controls.Add(Card("", "Ocultar los que se están cargando",
             "Mientras un dispositivo carga no ocupa sitio en la barra", Toggle(_s.HideWhileCharging, v => _s.HideWhileCharging = v)));
-        var reset = new FlatButton("Restablecer") { Enabled = _s.DeviceOrder.Count > 0 };
+        var reset = _resetOrder = new FlatButton("Restablecer") { Enabled = _s.DeviceOrder.Count > 0 };
         reset.Click += (_, _) => { _s.DeviceOrder.Clear(); Changed(); RefreshDevices(force: true); };
         _content.Controls.Add(Card("", "Orden original", "Vuelve al orden en que se detectan los dispositivos", reset));
         _content.ResumeLayout();
     }
 
-    private void WireRow(DeviceRow row, DeviceBattery original, List<string> ids, int index)
+    private static string Signature(IEnumerable<string> ids, IEnumerable<string> absentHidden) =>
+        string.Join("|", ids) + "#" + string.Join("|", absentHidden);
+
+    private void WireRow(DeviceRow row, DeviceBattery original)
     {
         row.ShownChanged += _ => { _s.ToggleHidden(row.Id); Changed(); };
         row.Renamed += name =>
@@ -307,68 +324,15 @@ internal sealed class SettingsWindow : Form
             menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
             menu.Show(anchor, new Point(0, anchor.Height));
         };
-        row.MoveRequested += delta =>
-        {
-            _s.MoveDevice(ids, index, delta);
-            Changed();
-            RefreshDevices(force: true);
-        };
-        row.DragStarted += r => { _dragRow = r; r.Dragging = true; _content.Focus(); };
-        row.DragMoved += DragTo;
-        row.DragEnded += EndDrag;
     }
 
-    // ---- Drag & drop reordering ------------------------------------------------------
-
-    private DeviceRow? _dragRow;
-    private bool _refreshPending;
-
-    /// <summary>Connected device rows in their current on-screen order (they are the first children of the list).</summary>
-    private List<DeviceRow> ConnectedRows() => _content.Controls.OfType<DeviceRow>().Where(r => r.Connected).ToList();
-
-    private void DragTo(DeviceRow row, int screenY)
-    {
-        var rows = ConnectedRows();
-        int y = _content.PointToClient(new Point(0, screenY)).Y;
-        // New slot = how many of the other rows have their middle above the pointer.
-        int target = rows.Where(r => r != row).Count(r => r.Top + r.Height / 2 < y);
-        if (target != rows.IndexOf(row))
-        {
-            _content.Controls.SetChildIndex(row, target);
-            UpdateArrows();
-        }
-        // Scroll when dragging near the top/bottom edge of a long list.
-        int edge = F.Px(28), step = F.Px(18);
-        if (y < edge) ScrollContentBy(-step);
-        else if (y > _content.ClientSize.Height - edge) ScrollContentBy(step);
-    }
+    private DeviceListPanel? _list;
+    private FlatButton? _resetOrder;
 
     private void ScrollContentBy(int dy)
     {
         var p = _content.AutoScrollPosition; // negative offsets
         _content.AutoScrollPosition = new Point(-p.X, Math.Max(0, -p.Y + dy));
-    }
-
-    private void UpdateArrows()
-    {
-        var rows = ConnectedRows();
-        for (int i = 0; i < rows.Count; i++) rows[i].SetMoveEnabled(i > 0, i < rows.Count - 1);
-    }
-
-    private void EndDrag(DeviceRow row)
-    {
-        row.Dragging = false;
-        _dragRow = null;
-        var ids = ConnectedRows().Select(r => r.Id).ToList();
-        var before = _s.Arrange(_cb.RawDevices()).Select(d => d.Id).ToList();
-        if (!ids.SequenceEqual(before))
-        {
-            _s.SetOrder(ids);
-            Changed();
-        }
-        // Rebuild after the mouse event that ended the drag has fully finished (the grip lives in the row).
-        _refreshPending = false;
-        BeginInvoke(() => RefreshDevices(force: true));
     }
 
     private void BuildAppearance()
