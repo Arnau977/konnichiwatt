@@ -64,6 +64,10 @@ public sealed class AppSettings
         DeviceOrder = ids.Concat(DeviceOrder.Where(id => !ids.Contains(id))).ToList();
     }
 
+    /// <summary>Sets the order of the given (connected) devices, keeping remembered positions of the others after them.</summary>
+    public void SetOrder(IReadOnlyList<string> ids) =>
+        DeviceOrder = ids.Concat(DeviceOrder.Where(id => !ids.Contains(id))).ToList();
+
     public void ToggleHidden(string id)
     {
         if (!HiddenDevices.Remove(id)) HiddenDevices.Add(id);

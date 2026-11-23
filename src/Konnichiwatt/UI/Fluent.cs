@@ -371,14 +371,17 @@ internal class SettingCard : Panel
     }
 
     protected virtual float TextRight => _accessory != null ? _accessory.Left - F.Pf(16) : Width - F.Pf(18);
+    protected virtual Color CardFill => F.Card;
+    protected virtual Color CardBorder => F.Stroke;
+    protected virtual float CardBorderWidth => 1;
 
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
         F.Prepare(g);
         var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
-        F.FillRound(g, F.Card, r, F.Pf(6));
-        F.StrokeRound(g, F.Stroke, r, F.Pf(6));
+        F.FillRound(g, CardFill, r, F.Pf(6));
+        F.StrokeRound(g, CardBorder, r, CardBorderWidth);
 
         float x = F.Pf(18);
         if (_glyph != null)
@@ -397,6 +400,71 @@ internal class SettingCard : Panel
             F.DrawText(g, _title, tf, F.Fg, new RectangleF(x, Height / 2f - F.Pf(19), w, F.Pf(20)));
             F.DrawText(g, _description, df, F.Fg2, new RectangleF(x, Height / 2f + F.Pf(1), w, F.Pf(18)));
         }
+    }
+}
+
+/// <summary>
+/// The classic "grip" drag handle (2×3 dots). While the left button is held it reports the pointer's vertical
+/// position in screen coordinates — the control keeps mouse capture, so it works even outside its bounds.
+/// </summary>
+internal sealed class GripHandle : FluentControl
+{
+    private bool _dragging;
+    public event Action? DragStarted;
+    public event Action<int>? DragMoved;   // screen Y
+    public event Action? DragEnded;
+
+    public GripHandle()
+    {
+        Size = new Size(F.Px(20), F.Px(36));
+        Cursor = Cursors.SizeAll;
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Button != MouseButtons.Left) return;
+        _dragging = true;
+        DragStarted?.Invoke();
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_dragging) DragMoved?.Invoke(PointToScreen(e.Location).Y);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        End();
+    }
+
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        base.OnMouseCaptureChanged(e);
+        End(); // e.g. Alt+Tab while dragging
+    }
+
+    private void End()
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        DragEnded?.Invoke();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        F.Prepare(g);
+        var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+        if (Hover || _dragging) F.FillRound(g, F.ControlHover, r, F.Pf(4));
+        float dot = F.Pf(3), gap = F.Pf(5.5f);
+        float x0 = Width / 2f - gap / 2 - dot / 2, y0 = Height / 2f - gap - dot / 2;
+        using var b = new SolidBrush(Hover || _dragging ? F.Fg : F.Fg2);
+        for (int col = 0; col < 2; col++)
+        for (int row = 0; row < 3; row++)
+            g.FillEllipse(b, x0 + col * gap, y0 + row * gap, dot, dot);
     }
 }
 

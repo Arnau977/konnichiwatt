@@ -221,6 +221,7 @@ internal sealed class SettingsWindow : Form
     public void RefreshDevices(bool force = false)
     {
         if (_page != 0 || IsDisposed) return;
+        if (_dragRow != null) { _refreshPending |= force; return; } // don't pull the row out from under the mouse
         var raw = _cb.RawDevices();
         var arranged = _s.Arrange(raw);
         var absentHidden = _s.HiddenDevices.Where(id => arranged.All(d => d.Id != id)).ToList();
@@ -312,6 +313,62 @@ internal sealed class SettingsWindow : Form
             Changed();
             RefreshDevices(force: true);
         };
+        row.DragStarted += r => { _dragRow = r; r.Dragging = true; _content.Focus(); };
+        row.DragMoved += DragTo;
+        row.DragEnded += EndDrag;
+    }
+
+    // ---- Drag & drop reordering ------------------------------------------------------
+
+    private DeviceRow? _dragRow;
+    private bool _refreshPending;
+
+    /// <summary>Connected device rows in their current on-screen order (they are the first children of the list).</summary>
+    private List<DeviceRow> ConnectedRows() => _content.Controls.OfType<DeviceRow>().Where(r => r.Connected).ToList();
+
+    private void DragTo(DeviceRow row, int screenY)
+    {
+        var rows = ConnectedRows();
+        int y = _content.PointToClient(new Point(0, screenY)).Y;
+        // New slot = how many of the other rows have their middle above the pointer.
+        int target = rows.Where(r => r != row).Count(r => r.Top + r.Height / 2 < y);
+        if (target != rows.IndexOf(row))
+        {
+            _content.Controls.SetChildIndex(row, target);
+            UpdateArrows();
+        }
+        // Scroll when dragging near the top/bottom edge of a long list.
+        int edge = F.Px(28), step = F.Px(18);
+        if (y < edge) ScrollContentBy(-step);
+        else if (y > _content.ClientSize.Height - edge) ScrollContentBy(step);
+    }
+
+    private void ScrollContentBy(int dy)
+    {
+        var p = _content.AutoScrollPosition; // negative offsets
+        _content.AutoScrollPosition = new Point(-p.X, Math.Max(0, -p.Y + dy));
+    }
+
+    private void UpdateArrows()
+    {
+        var rows = ConnectedRows();
+        for (int i = 0; i < rows.Count; i++) rows[i].SetMoveEnabled(i > 0, i < rows.Count - 1);
+    }
+
+    private void EndDrag(DeviceRow row)
+    {
+        row.Dragging = false;
+        _dragRow = null;
+        var ids = ConnectedRows().Select(r => r.Id).ToList();
+        var before = _s.Arrange(_cb.RawDevices()).Select(d => d.Id).ToList();
+        if (!ids.SequenceEqual(before))
+        {
+            _s.SetOrder(ids);
+            Changed();
+        }
+        // Rebuild after the mouse event that ended the drag has fully finished (the grip lives in the row).
+        _refreshPending = false;
+        BeginInvoke(() => RefreshDevices(force: true));
     }
 
     private void BuildAppearance()
@@ -483,31 +540,54 @@ internal sealed class SettingsWindow : Form
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] private static extern int SetWindowTheme(IntPtr h, string app, string? id);
 }
 
-/// <summary>One device in the "Dispositivos" page: icon (click to change), editable name, status, order arrows, visibility switch.</summary>
+/// <summary>
+/// One device in the "Dispositivos" page:
+/// [grip ⠿][▴▾] [icon] name / status ...... percent [switch]
+/// Drag the grip (or use the small arrows) to reorder; click the icon to change it; type over the name to rename.
+/// </summary>
 internal sealed class DeviceRow : SettingCard
 {
+    private readonly GripHandle _grip;
+    private readonly GlyphButton _up, _down;
     private readonly GlyphButton _icon;
     private readonly TextBox _name;
-    private readonly GlyphButton _up, _down;
     private readonly ToggleSwitch _shown;
     private string _subtitle = "";
     private string _percent = "";
     private string _committed = "";
-    private bool _low, _charging;
+    private bool _low, _charging, _dragging;
 
     public string Id { get; }
+    public bool Connected { get; }
     public event Action<bool>? ShownChanged;
     public event Action<string>? Renamed;
     public event Action<Control>? IconRequested;
     public event Action<int>? MoveRequested;
+    public event Action<DeviceRow>? DragStarted;
+    public event Action<DeviceRow, int>? DragMoved;
+    public event Action<DeviceRow>? DragEnded;
+
+    private int TextLeft => F.Px(104);
 
     public DeviceRow(string id, int width, bool canUp, bool canDown, bool connected)
         : base(null, "", null, null, width)
     {
         Id = id;
+        Connected = connected;
         Height = F.Px(68);
 
-        _icon = new GlyphButton("", 40, 18) { Location = new Point(F.Px(12), F.Px(14)), Enabled = connected };
+        _grip = new GripHandle { Visible = connected };
+        _grip.DragStarted += () => DragStarted?.Invoke(this);
+        _grip.DragMoved += y => DragMoved?.Invoke(this, y);
+        _grip.DragEnded += () => DragEnded?.Invoke(this);
+
+        _up = new GlyphButton("", 22, 9) { Enabled = canUp, Visible = connected };
+        _down = new GlyphButton("", 22, 9) { Enabled = canDown, Visible = connected };
+        _up.Height = _down.Height = F.Px(20);
+        _up.Click += (_, _) => MoveRequested?.Invoke(-1);
+        _down.Click += (_, _) => MoveRequested?.Invoke(+1);
+
+        _icon = new GlyphButton("", 40, 18) { Enabled = connected };
         _icon.Click += (_, _) => IconRequested?.Invoke(_icon);
 
         _name = new TextBox
@@ -516,8 +596,6 @@ internal sealed class DeviceRow : SettingCard
             BackColor = F.Card,
             ForeColor = F.Fg,
             Font = F.Text(14),
-            Location = new Point(F.Px(64), F.Px(14)),
-            Width = width - F.Px(64 + 230),
         };
         _name.KeyDown += (_, e) =>
         {
@@ -528,16 +606,11 @@ internal sealed class DeviceRow : SettingCard
         _name.GotFocus += (_, _) => Invalidate();
         _name.LostFocus += (_, _) => Invalidate();
 
-        _up = new GlyphButton("", 30, 12) { Enabled = canUp, Visible = connected };
-        _down = new GlyphButton("", 30, 12) { Enabled = canDown, Visible = connected };
-        _up.Click += (_, _) => MoveRequested?.Invoke(-1);
-        _down.Click += (_, _) => MoveRequested?.Invoke(+1);
-
         _shown = new ToggleSwitch(true);
         _shown.CheckedChanged += (_, _) => ShownChanged?.Invoke(_shown.Checked);
 
-        Controls.AddRange(new Control[] { _icon, _name, _up, _down, _shown });
-        LayoutRight();
+        Controls.AddRange(new Control[] { _grip, _up, _down, _icon, _name, _shown });
+        LayoutParts();
     }
 
     public bool Shown
@@ -546,22 +619,43 @@ internal sealed class DeviceRow : SettingCard
         set => _shown.SetSilently(value);
     }
 
-    private void LayoutRight()
+    /// <summary>Highlighted (accent border) while being dragged.</summary>
+    public bool Dragging
     {
-        if (_shown == null) return;
-        int right = Width - F.Px(18);
-        _shown.Location = new Point(right - _shown.Width, (Height - _shown.Height) / 2);
-        _down.Location = new Point(_shown.Left - F.Px(20) - _down.Width, (Height - _down.Height) / 2);
-        _up.Location = new Point(_down.Left - F.Px(2) - _up.Width, (Height - _up.Height) / 2);
+        get => _dragging;
+        set { _dragging = value; _name.BackColor = CardFill; Invalidate(); }
     }
 
-    protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutRight(); }
+    protected override Color CardFill => _dragging ? F.CardHover : F.Card;
+    protected override Color CardBorder => _dragging ? F.Accent : F.Stroke;
+    protected override float CardBorderWidth => _dragging ? F.Pf(1.5f) : 1;
+
+    private void LayoutParts()
+    {
+        if (_shown == null) return;
+        int mid = Height / 2;
+        _grip.Location = new Point(F.Px(8), mid - _grip.Height / 2);
+        _up.Location = new Point(F.Px(30), mid - _up.Height);
+        _down.Location = new Point(F.Px(30), mid);
+        _icon.Location = new Point(F.Px(56), mid - _icon.Height / 2);
+        _name.Location = new Point(TextLeft, F.Px(14));
+        _name.Width = Math.Max(F.Px(80), Width - TextLeft - F.Px(190));
+        _shown.Location = new Point(Width - F.Px(18) - _shown.Width, mid - _shown.Height / 2);
+    }
+
+    protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutParts(); }
 
     private void Commit()
     {
         if (_name.Text == _committed) return;
         _committed = _name.Text;
         Renamed?.Invoke(_name.Text);
+    }
+
+    public void SetMoveEnabled(bool canUp, bool canDown)
+    {
+        _up.Enabled = canUp;
+        _down.Enabled = canDown;
     }
 
     public void Update(DeviceBattery shown, DeviceBattery original)
@@ -593,14 +687,14 @@ internal sealed class DeviceRow : SettingCard
         Invalidate();
     }
 
-    protected override float TextRight => _up.Left;
+    protected override float TextRight => _shown.Left;
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         var g = e.Graphics;
         using var sub = F.Text(12);
-        F.DrawText(g, _subtitle, sub, F.Fg2, new RectangleF(F.Pf(64), F.Pf(38), _name.Width, F.Pf(18)));
+        F.DrawText(g, _subtitle, sub, F.Fg2, new RectangleF(TextLeft, F.Pf(38), _name.Width, F.Pf(18)));
         if (_name.Focused)
         {
             using var pen = new Pen(F.Accent, F.Pf(2));
@@ -610,8 +704,8 @@ internal sealed class DeviceRow : SettingCard
         {
             using var pf = F.Text(15, semibold: true);
             var color = _charging ? Theme.Charging(F.Light) : _low ? Theme.Low(F.Light) : F.Fg;
-            F.DrawText(g, _percent + (_charging ? " " + "⚡" : ""), pf, color,
-                new RectangleF(_up.Left - F.Pf(90), 0, F.Pf(80), Height), StringAlignment.Far);
+            F.DrawText(g, _percent + (_charging ? " ⚡" : ""), pf, color,
+                new RectangleF(_shown.Left - F.Pf(110), 0, F.Pf(90), Height), StringAlignment.Far);
         }
     }
 }
