@@ -81,10 +81,8 @@ internal sealed class SettingsWindow : Form
             F.Prepare(e.Graphics);
             using var bolt = F.Glyphs(20);
             using var name = F.Text(16, semibold: true);
-            using var sub = F.Text(12);
             F.DrawText(e.Graphics, Theme.Bolt, bolt, F.Accent, new RectangleF(F.Pf(18), F.Pf(18), F.Pf(26), F.Pf(28)));
-            F.DrawText(e.Graphics, "Konnichiwatt", name, F.Fg, new RectangleF(F.Pf(48), F.Pf(14), F.Pf(170), F.Pf(24)));
-            F.DrawText(e.Graphics, L.Tagline, sub, F.Fg2, new RectangleF(F.Pf(48), F.Pf(36), F.Pf(170), F.Pf(18)));
+            F.DrawText(e.Graphics, "Konnichiwatt", name, F.Fg, new RectangleF(F.Pf(48), F.Pf(20), F.Pf(170), F.Pf(24)));
         };
         var navList = new FlowLayoutPanel
         {

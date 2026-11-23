@@ -1,7 +1,5 @@
 # Konnichiwatt
 
-*Konnichiwa* (hola, en japonés) + *watt*: tus dispositivos te saludan con su batería.
-
 Batería de tus dispositivos inalámbricos siempre visible en la barra de tareas de Windows 11, junto a la bandeja del sistema.
 
 ```

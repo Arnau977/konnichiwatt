@@ -65,7 +65,6 @@ internal static class L
 
     // ---- Settings window ----------------------------------------------------------------
     public static string SettingsTitle => T("Ajustes de Konnichiwatt", "Konnichiwatt settings");
-    public static string Tagline => "konnichiwa + watt";
     public static string PageDevices => T("Dispositivos", "Devices");
     public static string PageAppearance => T("Apariencia", "Appearance");
     public static string PageAlerts => T("Avisos", "Alerts");
