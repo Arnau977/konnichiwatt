@@ -151,10 +151,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Diagnostics: RunDiagnostics,
             TestNotification: () => _tray.ShowBalloonTip(5000, "Konnichiwatt 👋⚡",
                 "Así se verán los avisos de batería baja y de carga completa.", ToolTipIcon.Info)),
-            _tray.Icon is Icon i ? (Icon)i.Clone() : null);
+            AppIcon());
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    /// <summary>The .exe's own icon (amber bolt), for windows.</summary>
+    private static Icon? AppIcon()
+    {
+        try { return Environment.ProcessPath is string p ? Icon.ExtractAssociatedIcon(p) : null; }
+        catch { return null; }
     }
 
     // ---- Tray icon -------------------------------------------------------------------

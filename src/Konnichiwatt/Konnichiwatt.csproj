@@ -12,6 +12,7 @@
     <AssemblyName>Konnichiwatt</AssemblyName>
     <RootNamespace>Konnichiwatt</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\konnichiwatt.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Version>0.2.0</Version>
     <Product>Konnichiwatt</Product>

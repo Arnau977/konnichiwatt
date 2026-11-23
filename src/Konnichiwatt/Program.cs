@@ -34,6 +34,12 @@ internal static class Program
             UI.PreviewRenderer.Save(args[1]);
             return;
         }
+        if (args.Length == 2 && args[0] == "--make-icon")
+        {
+            // Regenerates Assets\konnichiwatt.ico (the .exe icon) from the same drawing code as the tray bolt.
+            UI.TrayIconRenderer.SaveAppIcon(args[1]);
+            return;
+        }
         if (args.Length == 2 && args[0] == "--tray-preview")
         {
             UI.PreviewRenderer.SaveTrayIcons(args[1]);
