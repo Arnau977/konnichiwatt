@@ -25,11 +25,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private SettingsWindow? _settingsWindow;
     private IntPtr _trayIconHandle;
     private string _lastThresholds = "";
+    private readonly BatteryHistory _history = BatteryHistory.Load();
 
     public TrayApplicationContext(bool openSettings = false)
     {
         _lastThresholds = ThresholdsSignature();
         _popup.IsLow = _settings.IsLow;
+        _popup.History = _history;
         _monitor = new DeviceMonitor(Program.CreateProviders(), TimeSpan.FromSeconds(_settings.PollSeconds));
         _monitor.Updated += OnUpdated;
 
@@ -87,6 +89,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void OnUpdated(IReadOnlyList<DeviceBattery> devices)
     {
         _all = devices;
+        _history.Record(devices, DateTime.Now);
         Republish();
         var customized = Customized;
         CheckLowBattery(customized.Where(d => !_settings.HiddenDevices.Contains(d.Id)));
@@ -154,6 +157,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         _settingsWindow = new SettingsWindow(_settings, new SettingsWindow.Callbacks(
             RawDevices: () => _all,
+            Estimate: _history.EstimateText,
             Changed: OnSettingsChanged,
             PollNow: _monitor.RequestPoll,
             Diagnostics: RunDiagnostics,
@@ -285,6 +289,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         SystemEvents.UserPreferenceChanged -= OnThemeChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         _settingsWindow?.Close();
+        _history.Save();
         _layoutTimer.Stop();
         _monitor.Dispose();
         _taskbars.Dispose();

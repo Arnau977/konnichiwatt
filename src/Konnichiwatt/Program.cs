@@ -45,13 +45,19 @@ internal static class Program
             UI.PreviewRenderer.SaveTrayIcons(args[1]);
             return;
         }
+        if (args.Length == 2 && args[0] == "--popup-preview")
+        {
+            ApplicationConfiguration.Initialize();
+            UI.PreviewRenderer.SavePopup(args[1]);
+            return;
+        }
         if (args.Length == 1 && args[0] == "--settings-demo")
         {
             // Interactive settings window with sample devices and throw-away settings (nothing is saved).
             ApplicationConfiguration.Initialize();
             var samples = UI.PreviewRenderer.Samples();
             Application.Run(new UI.SettingsWindow(new AppSettings(),
-                new UI.SettingsWindow.Callbacks(() => samples, () => { }, () => { }, () => { }, () => { }), null));
+                new UI.SettingsWindow.Callbacks(() => samples, UI.SettingsWindow.SampleEstimate, () => { }, () => { }, () => { }, () => { }), null));
             return;
         }
         if (args.Length == 2 && args[0] == "--settings-shot")

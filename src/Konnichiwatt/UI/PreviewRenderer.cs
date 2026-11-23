@@ -53,6 +53,33 @@ internal static class PreviewRenderer
         sheet.Save(path);
     }
 
+    /// <summary>Dev aid (<c>--popup-preview out.png</c>): the hover flyout with a synthetic 12 h history.</summary>
+    public static void SavePopup(string path)
+    {
+        var devices = Samples();
+        var history = new BatteryHistory();
+        var now = DateTime.Now;
+        for (int m = 12 * 60; m >= 0; m -= 10)
+        {
+            var t = now.AddMinutes(-m);
+            double h = (12 * 60 - m) / 60.0;           // hours elapsed
+            history.Record(new[]
+            {
+                devices[0] with { Percent = (int)Math.Round(70 - h * 3.5) },                      // headset: slow drain
+                devices[1] with { Percent = (int)Math.Round(h < 4 ? 100 - h * 2 : 92 - (h - 4) * 3.75) }, // mouse
+                devices[2] with { Percent = (int)Math.Round(h < 9 ? 60 - h * 6 : 6 + (h - 9) * 31), State = h < 9 ? ChargeState.Discharging : ChargeState.Charging },
+                devices[3] with { Percent = (int)Math.Round(55 - h * 3.6) },
+            }.Select(d => d with { Percent = Math.Clamp(d.Percent ?? 0, 0, 100) }), t);
+        }
+
+        using var popup = new DetailsPopup { History = history, IsLow = d => d.Percent <= 20 && !d.IsCharging };
+        popup.ShowNear(new Rectangle(-4000, -3000, 200, 48), new Rectangle(-4400, -3000, 1000, 48), devices, 1f);
+        Application.DoEvents();
+        using var bmp = new Bitmap(popup.Width, popup.Height);
+        popup.DrawToBitmap(bmp, new Rectangle(Point.Empty, popup.Size));
+        bmp.Save(path);
+    }
+
     public static void Save(string path)
     {
         var devices = Samples();

@@ -13,6 +13,7 @@ internal sealed class SettingsWindow : Form
 {
     internal sealed record Callbacks(
         Func<IReadOnlyList<DeviceBattery>> RawDevices,
+        Func<string, string?> Estimate,
         Action Changed,
         Action PollNow,
         Action Diagnostics,
@@ -233,7 +234,7 @@ internal sealed class SettingsWindow : Form
             {
                 var d = arranged.FirstOrDefault(a => a.Id == row.Id);
                 var orig = raw.FirstOrDefault(a => a.Id == row.Id);
-                if (d != null && orig != null) row.Update(d, orig, _s.IsLow(d), OwnThreshold(d.Id));
+                if (d != null && orig != null) row.Update(d, orig, _s.IsLow(d), OwnThreshold(d.Id), _cb.Estimate(d.Id));
             }
             return;
         }
@@ -257,7 +258,7 @@ internal sealed class SettingsWindow : Form
             {
                 var orig = raw.First(a => a.Id == d.Id);
                 var row = new DeviceRow(d.Id, CardWidth, canUp: false, canDown: false, connected: true);
-                row.Update(d, orig, _s.IsLow(d), OwnThreshold(d.Id));
+                row.Update(d, orig, _s.IsLow(d), OwnThreshold(d.Id), _cb.Estimate(d.Id));
                 row.Shown = !_s.HiddenDevices.Contains(d.Id);
                 WireRow(row, orig);
                 rows.Add(row);
@@ -506,12 +507,21 @@ internal sealed class SettingsWindow : Form
         });
     }
 
+    /// <summary>Fake estimates for the sample devices used by the demo / screenshots.</summary>
+    internal static string? SampleEstimate(string id) => id switch
+    {
+        "h" => "≈ 9 h restantes",
+        "c" => "lleno en ≈ 25 min",
+        "k" => "≈ 2 h restantes",
+        _ => null,
+    };
+
     /// <summary>Dev aid (<c>--settings-shot dir</c>): renders every page with sample devices to PNG files.</summary>
     public static void SaveScreenshots(string dir, AppSettings settings)
     {
         Directory.CreateDirectory(dir);
         var samples = PreviewRenderer.Samples();
-        using var w = new SettingsWindow(settings, new Callbacks(() => samples, () => { }, () => { }, () => { }, () => { }), null)
+        using var w = new SettingsWindow(settings, new Callbacks(() => samples, SampleEstimate, () => { }, () => { }, () => { }, () => { }), null)
         {
             StartPosition = FormStartPosition.Manual,
             Location = new Point(-5000, -5000),
@@ -660,7 +670,7 @@ internal sealed class DeviceRow : SettingCard
 
     /// <param name="low">Below its (own or general) threshold.</param>
     /// <param name="ownThreshold">The device's own alert threshold, if it has one.</param>
-    public void Update(DeviceBattery shown, DeviceBattery original, bool low, int? ownThreshold)
+    public void Update(DeviceBattery shown, DeviceBattery original, bool low, int? ownThreshold, string? estimate = null)
     {
         _icon.Text = Theme.Glyph(shown.Kind);
         _icon.Invalidate();
@@ -673,6 +683,7 @@ internal sealed class DeviceRow : SettingCard
         _subtitle = shown.Name == original.Name
             ? Theme.StateText(shown)
             : $"{original.Name} · {Theme.StateText(shown).ToLowerInvariant()}";
+        if (estimate != null && !shown.Stale) _subtitle += $" · {estimate}";
         if (ownThreshold is int t) _subtitle += $" · aviso al {t} %";
         _percent = Theme.PercentText(shown, allowApprox: true);
         _charging = shown.IsCharging;
