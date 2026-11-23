@@ -17,6 +17,36 @@ public sealed class AppSettings
     public bool LowBatteryNotifications { get; set; } = true;
     public bool ShowTaskbarWidget { get; set; } = true;
     public List<string> HiddenDevices { get; set; } = new();
+    public bool ChargeCompleteNotifications { get; set; } = true;
+    public bool HideWhileCharging { get; set; } = false;
+    /// <summary>Also show the widget on the taskbars of secondary monitors.</summary>
+    public bool ShowOnAllTaskbars { get; set; } = true;
+    /// <summary>User overrides per device id (custom name / icon).</summary>
+    public Dictionary<string, DeviceCustomization> Customizations { get; set; } = new();
+    /// <summary>Display order chosen by the user (device ids); unknown devices go after these.</summary>
+    public List<string> DeviceOrder { get; set; } = new();
+
+    public DeviceBattery Customize(DeviceBattery d) =>
+        Customizations.TryGetValue(d.Id, out var c)
+            ? d with { Name = string.IsNullOrWhiteSpace(c.Name) ? d.Name : c.Name!, Kind = c.Kind ?? d.Kind }
+            : d;
+
+    public string DisplayName(string id, string fallback) =>
+        Customizations.TryGetValue(id, out var c) && !string.IsNullOrWhiteSpace(c.Name) ? c.Name! : fallback;
+
+    public DeviceCustomization CustomizationFor(string id)
+    {
+        if (!Customizations.TryGetValue(id, out var c)) Customizations[id] = c = new DeviceCustomization();
+        return c;
+    }
+
+    /// <summary>Removes empty override entries so settings.json stays tidy.</summary>
+    public void PruneCustomizations()
+    {
+        foreach (var id in Customizations.Where(kv => string.IsNullOrWhiteSpace(kv.Value.Name) && kv.Value.Kind == null)
+                                         .Select(kv => kv.Key).ToList())
+            Customizations.Remove(id);
+    }
 
     private static readonly string FilePath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Konnichiwatt", "settings.json");
@@ -69,6 +99,12 @@ public sealed class AppSettings
         }
         catch (Exception e) { Log.Error("Save settings", e); }
     }
+}
+
+public sealed class DeviceCustomization
+{
+    public string? Name { get; set; }
+    public DeviceKind? Kind { get; set; }
 }
 
 internal static class Startup

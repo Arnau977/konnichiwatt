@@ -40,17 +40,31 @@ internal sealed class DetailsPopup : Form
         DwmSetWindowAttribute(Handle, 33, ref round, sizeof(int));
     }
 
-    public void ShowAbove(Rectangle anchor, IReadOnlyList<DeviceBattery> devices, float scale)
+    /// <summary>Shows the flyout next to <paramref name="anchor"/>, on the screen side of the taskbar it lives in.</summary>
+    public void ShowNear(Rectangle anchor, Rectangle taskbar, IReadOnlyList<DeviceBattery> devices, float scale)
     {
+        if (anchor.IsEmpty) return;
         _devices = devices;
         _scale = scale;
         _light = Theme.IsLightTaskbar();
         BackColor = Theme.PopupBack(_light);
 
         var size = Measure();
-        var screen = Screen.FromRectangle(anchor).WorkingArea;
-        int x = Math.Clamp(anchor.Left + anchor.Width / 2 - size.Width / 2, screen.Left + 8, screen.Right - size.Width - 8);
-        int y = anchor.Top - size.Height - (int)(10 * scale);
+        var screen = Screen.FromRectangle(anchor).Bounds;
+        int gap = (int)(10 * scale);
+        int x, y;
+        if (taskbar.Width >= taskbar.Height) // horizontal taskbar: above (bottom bar) or below (top bar)
+        {
+            x = anchor.Left + anchor.Width / 2 - size.Width / 2;
+            y = taskbar.Top > screen.Top + screen.Height / 2 ? taskbar.Top - size.Height - gap : taskbar.Bottom + gap;
+        }
+        else // vertical taskbar: to the right (left bar) or to the left (right bar)
+        {
+            y = anchor.Top + anchor.Height / 2 - size.Height / 2;
+            x = taskbar.Left < screen.Left + screen.Width / 2 ? taskbar.Right + gap : taskbar.Left - size.Width - gap;
+        }
+        x = Math.Clamp(x, screen.Left + 8, Math.Max(screen.Left + 8, screen.Right - size.Width - 8));
+        y = Math.Clamp(y, screen.Top + 8, Math.Max(screen.Top + 8, screen.Bottom - size.Height - 8));
         Bounds = new Rectangle(x, y, size.Width, size.Height);
         if (!Visible) Show();
         Invalidate();

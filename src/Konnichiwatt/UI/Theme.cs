@@ -61,6 +61,7 @@ internal static class Theme
         DeviceKind.Mouse => "",
         DeviceKind.Keyboard => "",
         DeviceKind.Controller => "",
+        DeviceKind.Speaker => "",
         _ => "", // Bluetooth
     };
 
@@ -79,6 +80,7 @@ internal static class Theme
         DeviceKind.Mouse => "Ratón",
         DeviceKind.Keyboard => "Teclado",
         DeviceKind.Controller => "Mando",
+        DeviceKind.Speaker => "Altavoz",
         _ => "Dispositivo",
     };
 

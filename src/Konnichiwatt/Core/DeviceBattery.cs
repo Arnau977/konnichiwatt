@@ -1,6 +1,9 @@
+using System.Text.Json.Serialization;
+
 namespace Konnichiwatt.Core;
 
-public enum DeviceKind { Headset, Mouse, Keyboard, Controller, Other }
+[JsonConverter(typeof(JsonStringEnumConverter<DeviceKind>))]
+public enum DeviceKind { Headset, Mouse, Keyboard, Controller, Speaker, Other }
 
 public enum ChargeState { Unknown, Discharging, Charging, Full }
 

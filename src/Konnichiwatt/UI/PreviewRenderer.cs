@@ -27,8 +27,16 @@ internal static class PreviewRenderer
             rows.Add(($"{(light ? "claro" : "oscuro")} · {(bold ? "grueso" : "normal")} · {mode}", w.RenderPreview(devices, h, 1f, light), light));
         }
 
-        int width = 260 + rows.Max(r => r.Bmp.Width) + 20;
-        using var sheet = new Bitmap(width, rows.Count * h);
+        // Vertical taskbar (ExplorerPatcher / StartAllBack), 56 px wide, dark, bold.
+        const int vw = 56;
+        var columns = Enum.GetValues<BatteryDisplay>()
+            .Select(mode => (Label: mode.ToString(), Bmp: new TaskbarWidget(new AppSettings { Display = mode, BoldStyle = true })
+                .RenderPreview(devices, h, 1f, light: false, verticalWidth: vw)))
+            .ToList();
+        int columnsH = columns.Max(c => c.Bmp.Height) + 24;
+
+        int width = Math.Max(260 + rows.Max(r => r.Bmp.Width) + 20, 260 + columns.Count * (vw + 40));
+        using var sheet = new Bitmap(width, rows.Count * h + columnsH);
         using (var g = Graphics.FromImage(sheet))
         using (var label = new Font("Segoe UI", 11, GraphicsUnit.Pixel))
         {
@@ -42,6 +50,21 @@ internal static class PreviewRenderer
                 g.DrawString(text, label, lb, 8, i * h + 16);
                 g.DrawImage(bmp, 260, i * h);
                 bmp.Dispose();
+            }
+
+            int top = rows.Count * h;
+            using var dark = new SolidBrush(Color.FromArgb(0x1C, 0x1C, 0x1C));
+            using var strip = new SolidBrush(Color.FromArgb(0x2A, 0x2A, 0x2A));
+            using var gray = new SolidBrush(Color.Gray);
+            g.FillRectangle(dark, 0, top, width, columnsH);
+            g.DrawString("barra vertical · grueso", label, gray, 8, top + 16);
+            for (int i = 0; i < columns.Count; i++)
+            {
+                int x = 260 + i * (vw + 40);
+                g.FillRectangle(strip, x, top + 4, vw, columnsH - 8);
+                g.DrawImage(columns[i].Bmp, x, top + 4);
+                g.DrawString(columns[i].Label, label, gray, x, top + columnsH - 18);
+                columns[i].Bmp.Dispose();
             }
         }
         sheet.Save(path);
