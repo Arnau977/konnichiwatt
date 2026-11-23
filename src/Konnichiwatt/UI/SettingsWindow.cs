@@ -160,7 +160,11 @@ internal sealed class SettingsWindow : Form
         ApplyFrame();
     }
 
-    private int CardWidth => _content.ClientSize.Width - F.Px(22);
+    /// <summary>
+    /// Card width, always leaving room for the vertical scroll bar: long pages get one, and if the cards were
+    /// sized for the full width they would overflow and bring up a horizontal scroll bar too.
+    /// </summary>
+    private int CardWidth => _content.ClientSize.Width - (_content.VerticalScroll.Visible ? 0 : SystemInformation.VerticalScrollBarWidth) - F.Px(8);
 
     private void ShowPage(int index)
     {
@@ -508,19 +512,6 @@ internal sealed class SettingsWindow : Form
             catch (Exception e) { Log.Error("Open folder", e); }
         };
         _content.Controls.Add(Card("", L.LogsFolder, Log.Directory, open));
-
-        var version = typeof(SettingsWindow).Assembly.GetName().Version;
-        _content.Controls.Add(new Label
-        {
-            Text = L.Footer(version?.ToString(3) ?? ""),
-            AutoSize = false,
-            Width = CardWidth,
-            Height = F.Px(40),
-            ForeColor = F.Fg2,
-            BackColor = F.Back,
-            Font = F.Text(12),
-            TextAlign = ContentAlignment.MiddleCenter,
-        });
     }
 
     // ---- Updates ---------------------------------------------------------------------

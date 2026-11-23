@@ -133,8 +133,6 @@ internal static class L
     public static string GenerateReport => T("Generar informe", "Create report");
     public static string LogsFolder => T("Carpeta de registros", "Logs folder");
     public static string Open => T("Abrir", "Open");
-    public static string Footer(string version) =>
-        T($"Konnichiwatt {version} · konnichiwa (こんにちは, hola) + watt", $"Konnichiwatt {version} · konnichiwa (こんにちは, hello) + watt");
 
     // ---- Rename dialog ----------------------------------------------------------------
     public static string RenameTitle => T("Cambiar nombre", "Rename");
