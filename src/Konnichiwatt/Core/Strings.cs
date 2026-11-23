@@ -188,6 +188,9 @@ internal static class L
 
     // ---- History page ---------------------------------------------------------------------
     public static string PageHistory => T("Historial", "History");
+    public static string PageNews => T("Novedades", "What's new");
+    public static string WhatsNewMenu => T("Novedades…", "What's new…");
+    public static string VersionHeading(string v) => T($"Versión {v}", $"Version {v}");
     public static string NoHistory => T("Todavía no hay datos. El historial se va llenando mientras la app está abierta.",
                                         "No data yet. The history fills up while the app is running.");
     public static string Period => T("Periodo", "Period");

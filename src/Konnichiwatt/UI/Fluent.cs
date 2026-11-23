@@ -526,5 +526,19 @@ internal sealed class NavItem : FluentControl
         using var tf = F.Text(14);
         F.DrawText(g, _glyph, gf, F.Fg, new RectangleF(F.Pf(14), 0, F.Pf(20), Height));
         F.DrawText(g, Text, tf, F.Fg, new RectangleF(F.Pf(46), 0, Width - F.Pf(50), Height));
+        if (Badge)
+        {
+            float d = F.Pf(8);
+            using var b = new SolidBrush(F.Accent);
+            g.FillEllipse(b, Width - F.Pf(22), Height / 2f - d / 2, d, d);
+        }
     }
+
+    /// <summary>Accent dot on the right: something new to look at in that section.</summary>
+    public bool Badge
+    {
+        get => _badge;
+        set { _badge = value; Invalidate(); }
+    }
+    private bool _badge;
 }

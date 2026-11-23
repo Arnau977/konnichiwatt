@@ -24,12 +24,12 @@ internal sealed partial class SettingsWindow : Form
         Action? InstallUpdate = null,
         Action? ReportDevice = null);
 
-    public const int DevicesPage = 0, HistoryPage = 1, AppearancePage = 2, AlertsPage = 3, GeneralPage = 4;
+    public const int DevicesPage = 0, HistoryPage = 1, AppearancePage = 2, AlertsPage = 3, GeneralPage = 4, NewsPage = 5;
     private const string HistoryGlyph = "", ReportGlyph = "", BetaGlyph = "", NotesGlyph = "";
 
     private static (string Glyph, string Title)[] Pages => new[]
     {
-        ("", L.PageDevices), (HistoryGlyph, L.PageHistory), ("", L.PageAppearance), ("", L.PageAlerts), ("", L.PageGeneral),
+        ("", L.PageDevices), (HistoryGlyph, L.PageHistory), ("", L.PageAppearance), ("", L.PageAlerts), ("", L.PageGeneral), (NotesGlyph, L.PageNews),
     };
 
     private static (string Label, DeviceKind Kind)[] IconChoices => new[]
@@ -92,7 +92,7 @@ internal sealed partial class SettingsWindow : Form
         var navList = new FlowLayoutPanel
         {
             Location = new Point(F.Px(10), F.Px(76)),
-            Size = new Size(F.Px(200), F.Px(200)),
+            Size = new Size(F.Px(200), F.Px(42 * Pages.Length + 4)), // 38 px items + 4 px gap
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             BackColor = F.Back,
@@ -100,7 +100,7 @@ internal sealed partial class SettingsWindow : Form
         for (int i = 0; i < Pages.Length; i++)
         {
             int index = i;
-            var item = new NavItem(Pages[i].Glyph, Pages[i].Title, F.Px(196)) { Selected = i == _page };
+            var item = new NavItem(Pages[i].Glyph, Pages[i].Title, F.Px(196)) { Selected = i == _page, Badge = i == NewsPage && HasUnseenNotes(_s) };
             item.Click += (_, _) => ShowPage(index);
             _nav.Add(item);
             navList.Controls.Add(item);
@@ -187,6 +187,7 @@ internal sealed partial class SettingsWindow : Form
             case HistoryPage: BuildHistory(); break;
             case AppearancePage: BuildAppearance(); break;
             case AlertsPage: BuildAlerts(); break;
+            case NewsPage: BuildNews(); break;
             default: BuildGeneral(); break;
         }
         _content.ResumeLayout();
@@ -566,7 +567,6 @@ internal sealed partial class SettingsWindow : Form
         var version = $"Konnichiwatt {Updater.CurrentVersion.ToString(3)}" + (AppPaths.IsPortable ? $" ({L.Portable})" : "");
         _updateCard = Card("", version, UpdateStatus(), _updateButton);
         _content.Controls.Add(_updateCard);
-        AddWhatsNew();
     }
 
     private string UpdateStatus()

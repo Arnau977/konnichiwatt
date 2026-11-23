@@ -59,13 +59,30 @@ internal sealed partial class SettingsWindow
         return h;
     }
 
-    /// <summary>"What's new in version X": the changes of the running version, from the embedded CHANGELOG.md.</summary>
-    private void AddWhatsNew()
+    /// <summary>The running version's changes count as seen once this version's notes were opened (or announced).</summary>
+    public static bool HasUnseenNotes(AppSettings s)
     {
         var version = Updater.CurrentVersion.ToString(3);
-        var notes = ReleaseNotes.Embedded.For(version);
-        if (notes.Count == 0) return;
-        _content.Controls.Add(new NotesCard(NotesGlyph, L.WhatsNew(version), notes, CardWidth));
+        return s.NotesSeenVersion != version && ReleaseNotes.Embedded.For(version).Count > 0;
+    }
+
+    /// <summary>"What's new" page: this version's changes first, then every earlier version in the changelog.</summary>
+    private void BuildNews()
+    {
+        var current = Updater.CurrentVersion.ToString(3);
+        var notes = ReleaseNotes.Embedded;
+        foreach (var v in notes.Versions)
+        {
+            var lines = notes.For(v);
+            if (lines.Count == 0) continue;
+            _content.Controls.Add(new NotesCard(NotesGlyph, v == current ? L.WhatsNew(v) : L.VersionHeading(v), lines, CardWidth));
+        }
+        if (_s.NotesSeenVersion != current)
+        {
+            _s.NotesSeenVersion = current;
+            Changed();
+        }
+        _nav[NewsPage].Badge = false;
     }
 }
 

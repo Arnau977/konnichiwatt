@@ -151,7 +151,8 @@ public sealed class AppSettings
                 return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
         }
         catch (Exception e) { Log.Error("Load settings", e); }
-        return new AppSettings();
+        // First run: this version's changes aren't news to someone who has never used an earlier one.
+        return new AppSettings { NotesSeenVersion = Updater.CurrentVersion.ToString(3) };
     }
 
     public void Save()

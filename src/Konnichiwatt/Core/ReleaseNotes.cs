@@ -33,6 +33,10 @@ internal sealed partial class ReleaseNotes
         return notes;
     }
 
+    /// <summary>Every version in the changelog, newest first.</summary>
+    public IReadOnlyList<string> Versions =>
+        _byVersion.Keys.OrderByDescending(v => Version.TryParse(v, out var p) ? p : new Version(0, 0)).ToList();
+
     /// <summary>The changes of <paramref name="version"/> in the current language (empty if unknown).</summary>
     public IReadOnlyList<string> For(string version) =>
         _byVersion.TryGetValue(Normalize(version), out var l) ? l.Select(n => L.Language == "es" ? n.Es : n.En).ToList() : Array.Empty<string>();

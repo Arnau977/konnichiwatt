@@ -123,13 +123,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     // ---- Updates -----------------------------------------------------------------------
 
-    /// <summary>"Updated to X" with the first changes; clicking opens the full list in Settings › General.</summary>
+    /// <summary>
+    /// "Updated to X" with the first changes; clicking opens Settings › What's new. They count as seen only once that
+    /// page is opened: until then its menu entry has a dot and the settings window opens on it.
+    /// </summary>
     private void ShowWhatsNew(string version)
     {
         var notes = ReleaseNotes.Embedded.For(version);
-        _settings.NotesSeenVersion = version;
-        _settings.Save();
-        Notify(L.UpdatedTitle, L.UpdatedBody(version, notes), ToolTipIcon.Info, () => OpenSettings(SettingsWindow.GeneralPage));
+        Notify(L.UpdatedTitle, L.UpdatedBody(version, notes), ToolTipIcon.Info, () => OpenSettings(SettingsWindow.NewsPage));
     }
 
     private void Notify(string title, string body, ToolTipIcon icon, Action? onClick = null)
@@ -245,7 +246,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         UpdateTrayIcon();
     }
 
-    private void OpenSettings() => OpenSettings(null);
+    /// <summary>Opens the settings; right after an update, on the "What's new" page until it has been seen.</summary>
+    private void OpenSettings() =>
+        OpenSettings(_settingsWindow == null && SettingsWindow.HasUnseenNotes(_settings) ? SettingsWindow.NewsPage : null);
 
     private void OpenSettings(int? page)
     {
@@ -369,6 +372,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(L.RefreshNow, null, (_, _) => _monitor.RequestPoll());
+        _menu.Items.Add(L.WhatsNewMenu, null, (_, _) => OpenSettings(SettingsWindow.NewsPage));
         var settings = new ToolStripMenuItem(L.SettingsMenu, null, (_, _) => OpenSettings());
         settings.Font = new Font(settings.Font, FontStyle.Bold);
         _menu.Items.Add(settings);
