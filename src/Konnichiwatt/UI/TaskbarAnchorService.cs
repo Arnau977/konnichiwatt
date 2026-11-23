@@ -96,6 +96,9 @@ internal sealed class TaskbarAnchorService : IDisposable
         for (int i = 0; i < got; i++)
         {
             if (kids[i] is not IAccessible k) continue;
+            // Skip our own widget (a child window of this taskbar): counting it as part of the tray area
+            // made the anchor grow by the widget's width, which moved the widget, which shrank the anchor…
+            if (IsOurs(k)) continue;
             try
             {
                 k.accLocation(out int x, out int y, out int w, out int h, 0);
@@ -133,7 +136,26 @@ internal sealed class TaskbarAnchorService : IDisposable
         return cluster;
     }
 
+    private static readonly uint OwnPid = (uint)Environment.ProcessId;
+
+    private static bool IsOurs(IAccessible a)
+    {
+        try
+        {
+            if (WindowFromAccessibleObject(a, out var hwnd) != 0 || hwnd == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            return pid == OwnPid;
+        }
+        catch { return false; }
+    }
+
     private const uint OBJID_CLIENT = 0xFFFFFFFC;
+
+    [DllImport("oleacc.dll")]
+    private static extern int WindowFromAccessibleObject(IAccessible acc, out IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 
     [DllImport("oleacc.dll")]
     private static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint id, ref Guid iid,
