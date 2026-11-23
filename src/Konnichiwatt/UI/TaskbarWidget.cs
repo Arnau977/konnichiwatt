@@ -220,7 +220,7 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         for (int i = 0; i < _devices.Count; i++)
         {
             var d = _devices[i];
-            bool low = d.Percent is int p && p <= _settings.LowBatteryThreshold && !d.IsCharging;
+            bool low = _settings.IsLow(d);
             Color Dim(Color c) => d.Stale ? Color.FromArgb(110, c) : c;
             var fg = Dim(low ? Theme.Low(light) : Theme.Foreground(light));
             var accent = Dim(d.IsCharging ? Theme.Charging(light) : low ? Theme.Low(light) : Theme.Foreground(light));

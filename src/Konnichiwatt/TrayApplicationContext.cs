@@ -24,11 +24,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool _suppressPopup;
     private SettingsWindow? _settingsWindow;
     private IntPtr _trayIconHandle;
-    private int _lastThreshold;
+    private string _lastThresholds = "";
 
     public TrayApplicationContext(bool openSettings = false)
     {
-        _lastThreshold = _settings.LowBatteryThreshold;
+        _lastThresholds = ThresholdsSignature();
+        _popup.IsLow = _settings.IsLow;
         _monitor = new DeviceMonitor(Program.CreateProviders(), TimeSpan.FromSeconds(_settings.PollSeconds));
         _monitor.Updated += OnUpdated;
 
@@ -76,6 +77,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private List<DeviceBattery> Customized => _settings.Arrange(_all);
     private List<DeviceBattery> Visible => Customized.Where(_settings.IsShown).ToList();
+    /// <summary>What the taskbar widget (and its flyout) shows: visible devices, minus those discreet mode hides.</summary>
+    private List<DeviceBattery> OnTaskbar => Visible.Where(_settings.ShowsOnTaskbar).ToList();
+
+    private string ThresholdsSignature() =>
+        _settings.LowBatteryThreshold + ";" + string.Join(";", _settings.Customizations
+            .Where(kv => kv.Value.LowThreshold != null).OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value.LowThreshold}"));
 
     private void OnUpdated(IReadOnlyList<DeviceBattery> devices)
     {
@@ -89,7 +96,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// <summary>Pushes the current list to every view (after a poll or a settings change).</summary>
     private void Republish()
     {
-        _taskbars.SetDevices(Visible);
+        _taskbars.SetDevices(OnTaskbar);
         if (_popup.Visible) ShowPopup();
         UpdateTrayIcon();
         _settingsWindow?.RefreshDevices();
@@ -98,7 +105,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ShowPopup()
     {
         var w = _hovered;
-        var visible = Visible;
+        var visible = OnTaskbar;
         if (w == null || visible.Count == 0) { _popup.Hide(); return; }
         _popup.ShowNear(w.ScreenBounds, w.TaskbarBounds, visible, w.Scale);
     }
@@ -124,12 +131,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settings.PruneCustomizations();
         _settings.Save();
         _monitor.Interval = TimeSpan.FromSeconds(_settings.PollSeconds);
-        if (_settings.LowBatteryThreshold != _lastThreshold)
+        var thresholds = ThresholdsSignature();
+        if (thresholds != _lastThresholds)
         {
-            _lastThreshold = _settings.LowBatteryThreshold;
-            _lowNotified.Clear();
+            _lastThresholds = thresholds;
+            _lowNotified.Clear(); // re-evaluate alerts with the new thresholds
         }
-        _taskbars.SetDevices(Visible);
+        _taskbars.SetDevices(OnTaskbar);
         _taskbars.Refresh(force: true);
         if (_popup.Visible) ShowPopup();
         UpdateTrayIcon();
@@ -172,7 +180,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var lowest = visible.Where(d => !d.Stale && d.Percent != null).OrderBy(d => d.Percent).FirstOrDefault();
         bool light = Theme.IsLightTaskbar();
         int size = SystemInformation.SmallIconSize.Width * 2; // Windows downsamples: smoother edges at 16-24 px
-        bool low = lowest?.Percent <= _settings.LowBatteryThreshold && lowest?.IsCharging == false;
+        bool low = lowest != null && _settings.IsLow(lowest);
 
         using var bmp = TrayIconRenderer.Render(size, lowest?.Percent, lowest?.IsCharging ?? false, low, light);
         var hicon = bmp.GetHicon();
@@ -195,10 +203,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         foreach (var d in devices)
         {
             if (d.Percent is not int p || d.Stale) continue;
-            bool low = p <= _settings.LowBatteryThreshold && !d.IsCharging;
+            int threshold = _settings.ThresholdFor(d.Id);
+            bool low = p <= threshold && !d.IsCharging;
             if (low && _lowNotified.Add(d.Id) && _settings.LowBatteryNotifications)
                 _tray.ShowBalloonTip(8000, "Batería baja", $"{d.Name}: {p}%", ToolTipIcon.Warning);
-            else if (!low && (d.IsCharging || p > _settings.LowBatteryThreshold + 5))
+            else if (!low && (d.IsCharging || p > threshold + 5))
                 _lowNotified.Remove(d.Id);
         }
     }

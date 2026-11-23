@@ -272,16 +272,17 @@ internal sealed class Slider : FluentControl
         float cy = Height / 2f, th = F.Pf(4);
         float t = (_value - _min) / (float)(_max - _min);
         float tx = TrackLeft + t * (TrackRight - TrackLeft);
+        var accent = Enabled ? F.Accent : Color.FromArgb(0x90, F.Track);
         F.FillRound(g, Color.FromArgb(F.Light ? 0x60 : 0x70, F.Track), new RectangleF(TrackLeft, cy - th / 2, TrackRight - TrackLeft, th), th / 2);
-        F.FillRound(g, F.Accent, new RectangleF(TrackLeft, cy - th / 2, Math.Max(th, tx - TrackLeft), th), th / 2);
+        F.FillRound(g, accent, new RectangleF(TrackLeft, cy - th / 2, Math.Max(th, tx - TrackLeft), th), th / 2);
 
-        float outer = F.Pf(20), inner = Hover || _dragging ? F.Pf(12) : F.Pf(10);
+        float outer = F.Pf(20), inner = Enabled && (Hover || _dragging) ? F.Pf(12) : F.Pf(10);
         using (var ob = new SolidBrush(F.ControlBack)) g.FillEllipse(ob, tx - outer / 2, cy - outer / 2, outer, outer);
         using (var op = new Pen(F.ControlStroke)) g.DrawEllipse(op, tx - outer / 2, cy - outer / 2, outer, outer);
-        using (var ib = new SolidBrush(F.Accent)) g.FillEllipse(ib, tx - inner / 2, cy - inner / 2, inner, inner);
+        using (var ib = new SolidBrush(accent)) g.FillEllipse(ib, tx - inner / 2, cy - inner / 2, inner, inner);
 
         using var f = F.Text(13, semibold: true);
-        F.DrawText(g, _format(_value), f, F.Fg, new RectangleF(Width - LabelW, 0, LabelW, Height), StringAlignment.Far);
+        F.DrawText(g, _format(_value), f, Enabled ? F.Fg : F.Fg2, new RectangleF(Width - LabelW, 0, LabelW, Height), StringAlignment.Far);
     }
 }
 

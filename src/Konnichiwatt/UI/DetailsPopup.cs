@@ -21,6 +21,9 @@ internal sealed class DetailsPopup : Form
         AutoScaleMode = AutoScaleMode.None;
     }
 
+    /// <summary>Per-device "low battery" rule (each device may have its own threshold).</summary>
+    public Func<DeviceBattery, bool>? IsLow { get; set; }
+
     protected override bool ShowWithoutActivation => true;
 
     protected override CreateParams CreateParams
@@ -105,7 +108,7 @@ internal sealed class DetailsPopup : Form
         float right = Width - Pad;
         foreach (var d in _devices)
         {
-            bool low = d.Percent is int p && p <= 20 && !d.IsCharging;
+            bool low = IsLow?.Invoke(d) ?? false;
             using var accent = new SolidBrush(d.IsCharging ? Theme.Charging(_light) : low ? Theme.Low(_light) : Theme.Foreground(_light));
 
             g.DrawString(Theme.Glyph(d.Kind), icon, fg, Pad, y + (RowH - 18 * _scale) / 2f - 2 * _scale);

@@ -233,7 +233,7 @@ internal sealed class SettingsWindow : Form
             {
                 var d = arranged.FirstOrDefault(a => a.Id == row.Id);
                 var orig = raw.FirstOrDefault(a => a.Id == row.Id);
-                if (d != null && orig != null) row.Update(d, orig);
+                if (d != null && orig != null) row.Update(d, orig, _s.IsLow(d), OwnThreshold(d.Id));
             }
             return;
         }
@@ -257,7 +257,7 @@ internal sealed class SettingsWindow : Form
             {
                 var orig = raw.First(a => a.Id == d.Id);
                 var row = new DeviceRow(d.Id, CardWidth, canUp: false, canDown: false, connected: true);
-                row.Update(d, orig);
+                row.Update(d, orig, _s.IsLow(d), OwnThreshold(d.Id));
                 row.Shown = !_s.HiddenDevices.Contains(d.Id);
                 WireRow(row, orig);
                 rows.Add(row);
@@ -296,6 +296,8 @@ internal sealed class SettingsWindow : Form
         _content.ResumeLayout();
     }
 
+    private int? OwnThreshold(string id) => _s.Customizations.TryGetValue(id, out var c) ? c.LowThreshold : null;
+
     private static string Signature(IEnumerable<string> ids, IEnumerable<string> absentHidden) =>
         string.Join("|", ids) + "#" + string.Join("|", absentHidden);
 
@@ -306,6 +308,25 @@ internal sealed class SettingsWindow : Form
         {
             _s.CustomizationFor(row.Id).Name = string.IsNullOrWhiteSpace(name) || name.Trim() == original.Name ? null : name.Trim();
             Changed();
+        };
+        row.OptionsRequested += anchor =>
+        {
+            // Per-device low-battery threshold; "General" follows the global one.
+            var menu = new ContextMenuStrip();
+            menu.Items.Add(new ToolStripMenuItem("Aviso de batería baja") { Enabled = false });
+            var own = OwnThreshold(row.Id);
+            var general = new ToolStripMenuItem($"General ({_s.LowBatteryThreshold} %)") { Checked = own == null };
+            general.Click += (_, _) => { _s.CustomizationFor(row.Id).LowThreshold = null; Changed(); RefreshDevices(); };
+            menu.Items.Add(general);
+            menu.Items.Add(new ToolStripSeparator());
+            foreach (var t in new[] { 5, 10, 15, 20, 25, 30, 40, 50 })
+            {
+                var item = new ToolStripMenuItem($"Al {t} %") { Checked = own == t };
+                item.Click += (_, _) => { _s.CustomizationFor(row.Id).LowThreshold = t; Changed(); RefreshDevices(); };
+                menu.Items.Add(item);
+            }
+            menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
+            menu.Show(anchor, new Point(0, anchor.Height));
         };
         row.IconRequested += anchor =>
         {
@@ -339,8 +360,10 @@ internal sealed class SettingsWindow : Form
     {
         _preview = new PreviewCard(CardWidth, () =>
         {
-            var arranged = _s.Arrange(_cb.RawDevices()).Where(_s.IsShown).ToList();
-            return arranged.Count > 0 ? arranged : PreviewRenderer.Samples();
+            // Real devices (with discreet mode applied, even if that leaves nothing); samples only if none are connected.
+            var raw = _cb.RawDevices();
+            if (raw.Count == 0) return PreviewRenderer.Samples();
+            return _s.Arrange(raw).Where(d => _s.IsShown(d) && _s.ShowsOnTaskbar(d)).ToList();
         }, _s);
         _content.Controls.Add(_preview);
 
@@ -350,6 +373,13 @@ internal sealed class SettingsWindow : Form
 
         _content.Controls.Add(Card("", "Texto e iconos gruesos", "Más legible en monitores con escala al 100 %",
             Toggle(_s.BoldStyle, v => _s.BoldStyle = v)));
+
+        var below = new Slider(10, 90, 5, _s.DiscreetBelow, v => $"{v} %") { Enabled = _s.DiscreetMode };
+        below.ValueChanged += (_, _) => { _s.DiscreetBelow = below.Value; Changed(); };
+        var discreet = new ToggleSwitch(_s.DiscreetMode);
+        discreet.CheckedChanged += (_, _) => { _s.DiscreetMode = discreet.Checked; below.Enabled = discreet.Checked; Changed(); };
+        _content.Controls.Add(Card("", "Modo discreto", "En la barra solo aparecen los que tienen poca batería", discreet));
+        _content.Controls.Add(Card("", "Mostrar cuando bajen del", "La bandeja los sigue mostrando todos", below));
 
         _content.Controls.Add(SectionLabel("Dónde se muestra"));
         _content.Controls.Add(Card("", "Mostrar en la barra de tareas", "Si lo desactivas, solo queda el icono de la bandeja",
@@ -418,7 +448,7 @@ internal sealed class SettingsWindow : Form
         low.CheckedChanged += (_, _) => { _s.LowBatteryNotifications = low.Checked; threshold.Enabled = low.Checked; Changed(); };
 
         _content.Controls.Add(Card("", "Aviso de batería baja", "Una notificación cuando un dispositivo se está quedando sin batería", low));
-        _content.Controls.Add(Card("", "Avisar al bajar del", "Se marca en rojo en la barra", threshold));
+        _content.Controls.Add(Card("", "Avisar al bajar del", "General; cada dispositivo puede tener el suyo (⋯)", threshold));
         _content.Controls.Add(Card("", "Aviso de carga completa", "Cuando un dispositivo que estaba cargando llega al 100 %",
             Toggle(_s.ChargeCompleteNotifications, v => _s.ChargeCompleteNotifications = v)));
 
@@ -515,6 +545,7 @@ internal sealed class DeviceRow : SettingCard
     private readonly GlyphButton _up, _down;
     private readonly GlyphButton _icon;
     private readonly TextBox _name;
+    private readonly GlyphButton _more;
     private readonly ToggleSwitch _shown;
     private string _subtitle = "";
     private string _percent = "";
@@ -526,6 +557,7 @@ internal sealed class DeviceRow : SettingCard
     public event Action<bool>? ShownChanged;
     public event Action<string>? Renamed;
     public event Action<Control>? IconRequested;
+    public event Action<Control>? OptionsRequested;
     public event Action<int>? MoveRequested;
     public event Action<DeviceRow>? DragStarted;
     public event Action<DeviceRow, int>? DragMoved;
@@ -570,10 +602,13 @@ internal sealed class DeviceRow : SettingCard
         _name.GotFocus += (_, _) => Invalidate();
         _name.LostFocus += (_, _) => Invalidate();
 
+        _more = new GlyphButton("", 30, 14) { Visible = connected };
+        _more.Click += (_, _) => OptionsRequested?.Invoke(_more);
+
         _shown = new ToggleSwitch(true);
         _shown.CheckedChanged += (_, _) => ShownChanged?.Invoke(_shown.Checked);
 
-        Controls.AddRange(new Control[] { _grip, _up, _down, _icon, _name, _shown });
+        Controls.AddRange(new Control[] { _grip, _up, _down, _icon, _name, _more, _shown });
         LayoutParts();
     }
 
@@ -603,8 +638,9 @@ internal sealed class DeviceRow : SettingCard
         _down.Location = new Point(F.Px(30), mid);
         _icon.Location = new Point(F.Px(56), mid - _icon.Height / 2);
         _name.Location = new Point(TextLeft, F.Px(14));
-        _name.Width = Math.Max(F.Px(80), Width - TextLeft - F.Px(190));
+        _name.Width = Math.Max(F.Px(80), Width - TextLeft - F.Px(230));
         _shown.Location = new Point(Width - F.Px(18) - _shown.Width, mid - _shown.Height / 2);
+        _more.Location = new Point(_shown.Left - F.Px(12) - _more.Width, mid - _more.Height / 2);
     }
 
     protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutParts(); }
@@ -622,7 +658,9 @@ internal sealed class DeviceRow : SettingCard
         _down.Enabled = canDown;
     }
 
-    public void Update(DeviceBattery shown, DeviceBattery original)
+    /// <param name="low">Below its (own or general) threshold.</param>
+    /// <param name="ownThreshold">The device's own alert threshold, if it has one.</param>
+    public void Update(DeviceBattery shown, DeviceBattery original, bool low, int? ownThreshold)
     {
         _icon.Text = Theme.Glyph(shown.Kind);
         _icon.Invalidate();
@@ -635,9 +673,10 @@ internal sealed class DeviceRow : SettingCard
         _subtitle = shown.Name == original.Name
             ? Theme.StateText(shown)
             : $"{original.Name} · {Theme.StateText(shown).ToLowerInvariant()}";
+        if (ownThreshold is int t) _subtitle += $" · aviso al {t} %";
         _percent = Theme.PercentText(shown, allowApprox: true);
         _charging = shown.IsCharging;
-        _low = shown.Percent is int p && p <= 20 && !shown.IsCharging;
+        _low = low;
         Invalidate();
     }
 
@@ -651,7 +690,7 @@ internal sealed class DeviceRow : SettingCard
         Invalidate();
     }
 
-    protected override float TextRight => _shown.Left;
+    protected override float TextRight => _more.Left;
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -669,7 +708,7 @@ internal sealed class DeviceRow : SettingCard
             using var pf = F.Text(15, semibold: true);
             var color = _charging ? Theme.Charging(F.Light) : _low ? Theme.Low(F.Light) : F.Fg;
             F.DrawText(g, _percent + (_charging ? " ⚡" : ""), pf, color,
-                new RectangleF(_shown.Left - F.Pf(110), 0, F.Pf(90), Height), StringAlignment.Far);
+                new RectangleF(_more.Left - F.Pf(98), 0, F.Pf(90), Height), StringAlignment.Far);
         }
     }
 }

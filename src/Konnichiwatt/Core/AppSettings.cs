@@ -18,6 +18,18 @@ public sealed class AppSettings
     public bool ShowTaskbarWidget { get; set; } = true;
     public List<string> HiddenDevices { get; set; } = new();
     public bool ChargeCompleteNotifications { get; set; } = true;
+    /// <summary>Discreet mode: the taskbar only shows devices at or below <see cref="DiscreetBelow"/> %.</summary>
+    public bool DiscreetMode { get; set; } = false;
+    public int DiscreetBelow { get; set; } = 30;
+
+    /// <summary>Low-battery threshold for a device: its own if set, otherwise the general one.</summary>
+    public int ThresholdFor(string id) =>
+        Customizations.TryGetValue(id, out var c) && c.LowThreshold is int t ? t : LowBatteryThreshold;
+
+    public bool IsLow(DeviceBattery d) => d.Percent is int p && p <= ThresholdFor(d.Id) && !d.IsCharging;
+
+    /// <summary>Whether the taskbar widget shows this (already visible) device, considering discreet mode.</summary>
+    public bool ShowsOnTaskbar(DeviceBattery d) => !DiscreetMode || d.Percent is int p && p <= DiscreetBelow;
     public bool HideWhileCharging { get; set; } = false;
     /// <summary>Legacy (v0.2) switch, only used while <see cref="TaskbarMonitors"/> has never been set.</summary>
     public bool ShowOnAllTaskbars { get; set; } = true;
@@ -85,7 +97,7 @@ public sealed class AppSettings
     /// <summary>Removes empty override entries so settings.json stays tidy.</summary>
     public void PruneCustomizations()
     {
-        foreach (var id in Customizations.Where(kv => string.IsNullOrWhiteSpace(kv.Value.Name) && kv.Value.Kind == null)
+        foreach (var id in Customizations.Where(kv => string.IsNullOrWhiteSpace(kv.Value.Name) && kv.Value.Kind == null && kv.Value.LowThreshold == null)
                                          .Select(kv => kv.Key).ToList())
             Customizations.Remove(id);
     }
@@ -147,6 +159,8 @@ public sealed class DeviceCustomization
 {
     public string? Name { get; set; }
     public DeviceKind? Kind { get; set; }
+    /// <summary>Own low-battery threshold (%), overriding the general one; null = use the general one.</summary>
+    public int? LowThreshold { get; set; }
 }
 
 internal static class Startup
