@@ -164,19 +164,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var visible = Visible;
         var lowest = visible.Where(d => !d.Stale && d.Percent != null).OrderBy(d => d.Percent).FirstOrDefault();
         bool light = Theme.IsLightTaskbar();
-        int size = SystemInformation.SmallIconSize.Width * 2;
+        int size = SystemInformation.SmallIconSize.Width * 2; // Windows downsamples: smoother edges at 16-24 px
+        bool low = lowest?.Percent <= _settings.LowBatteryThreshold && lowest?.IsCharging == false;
 
-        using var bmp = new Bitmap(size, size);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            using var f = Theme.IconFont(size * 0.95f);
-            bool low = lowest?.Percent <= _settings.LowBatteryThreshold && lowest?.IsCharging == false;
-            using var b = new SolidBrush(low ? Theme.Low(light) : Theme.Foreground(light));
-            var glyph = Theme.BatteryGlyph(lowest?.Percent, lowest?.IsCharging ?? false);
-            var s = g.MeasureString(glyph, f, PointF.Empty, StringFormat.GenericTypographic);
-            g.DrawString(glyph, f, b, (size - s.Width) / 2, (size - s.Height) / 2, StringFormat.GenericTypographic);
-        }
+        using var bmp = TrayIconRenderer.Render(size, lowest?.Percent, lowest?.IsCharging ?? false, low, light);
         var hicon = bmp.GetHicon();
         var old = _tray.Icon;
         _tray.Icon = Icon.FromHandle(hicon);

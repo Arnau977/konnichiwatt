@@ -18,6 +18,41 @@ internal static class PreviewRenderer
         };
     }
 
+    /// <summary>Dev aid (<c>--tray-preview out.png</c>): the tray bolt in every state, at tray sizes, on both taskbars.</summary>
+    public static void SaveTrayIcons(string path)
+    {
+        var states = new (string Label, int? Pct, bool Charging, bool Low)[]
+        {
+            ("sin datos", null, false, false), ("5 %", 5, false, true), ("28 %", 28, false, false),
+            ("62 %", 62, false, false), ("100 %", 100, false, false), ("cargando 40 %", 40, true, false),
+        };
+        int[] sizes = { 16, 24, 32 };
+        const int cell = 110, rowH = 60;
+        using var sheet = new Bitmap(cell * states.Length + 70, rowH * sizes.Length * 2);
+        using var g = Graphics.FromImage(sheet);
+        using var label = new Font("Segoe UI", 9, GraphicsUnit.Pixel);
+        int y = 0;
+        foreach (var light in new[] { false, true })
+        foreach (var size in sizes)
+        {
+            using (var back = new SolidBrush(light ? Color.FromArgb(0xEE, 0xEE, 0xEE) : Color.FromArgb(0x1C, 0x1C, 0x1C)))
+                g.FillRectangle(back, 0, y, sheet.Width, rowH);
+            using var lb = new SolidBrush(Color.Gray);
+            g.DrawString($"{size} px", label, lb, 6, y + rowH / 2 - 6);
+            for (int i = 0; i < states.Length; i++)
+            {
+                var s = states[i];
+                // Render at 2× and downscale like the tray does.
+                using var big = TrayIconRenderer.Render(size * 2, s.Pct, s.Charging, s.Low, light);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.DrawImage(big, 70 + i * cell, y + (rowH - size) / 2 - 6, size, size);
+                if (size == 32) g.DrawString(s.Label, label, lb, 70 + i * cell, y + rowH - 13);
+            }
+            y += rowH;
+        }
+        sheet.Save(path);
+    }
+
     public static void Save(string path)
     {
         var devices = Samples();

@@ -34,6 +34,11 @@ internal static class Program
             UI.PreviewRenderer.Save(args[1]);
             return;
         }
+        if (args.Length == 2 && args[0] == "--tray-preview")
+        {
+            UI.PreviewRenderer.SaveTrayIcons(args[1]);
+            return;
+        }
         if (args.Length == 1 && args[0] == "--settings-demo")
         {
             // Interactive settings window with sample devices and throw-away settings (nothing is saved).
