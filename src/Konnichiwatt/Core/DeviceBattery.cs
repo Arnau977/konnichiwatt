@@ -36,3 +36,9 @@ public interface IBatteryProvider : IDisposable
     /// <summary>Raised when the provider detects that devices were added/removed.</summary>
     event Action? DevicesChanged;
 }
+
+/// <summary>Providers that can show a device's last known value while it sleeps get the readings saved by the previous run.</summary>
+public interface IRestorable
+{
+    void Restore(IEnumerable<DeviceBattery> lastKnown);
+}

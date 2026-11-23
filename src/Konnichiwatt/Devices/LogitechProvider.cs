@@ -9,7 +9,7 @@ namespace Konnichiwatt.Devices;
 /// Uses the 20-byte "long" vendor collection (report 0x11).
 /// Battery features, in order of preference: 0x1004 Unified Battery, 0x1000 Battery Status, 0x1001 Battery Voltage.
 /// </summary>
-public sealed class LogitechProvider : IBatteryProvider
+public sealed class LogitechProvider : IBatteryProvider, IRestorable
 {
     private const int LogitechVid = 0x046D;
     private const byte LongReport = 0x11;
@@ -18,8 +18,11 @@ public sealed class LogitechProvider : IBatteryProvider
     /// <summary>ADC measurement, used by G533/G633/G635/G733/G933/G935 headsets (HeadsetControl).</summary>
     private const ushort FeatAdc = 0x1F20;
 
-    /// <summary>A mouse that stops answering is most likely asleep; keep showing (dimmed) its last value for a while.</summary>
-    private static readonly TimeSpan StaleKeep = TimeSpan.FromMinutes(30);
+    /// <summary>
+    /// A mouse that stops answering is most likely asleep (Logitech receivers can't tell asleep from switched off):
+    /// keep showing its last value, dimmed, for a while — also across app restarts, via <see cref="Restore"/>.
+    /// </summary>
+    private static readonly TimeSpan StaleKeep = TimeSpan.FromHours(8);
 
     private sealed class Known
     {
@@ -31,6 +34,13 @@ public sealed class LogitechProvider : IBatteryProvider
     }
 
     private readonly Dictionary<string, Known> _known = new();
+
+    /// <summary>Seeds the "asleep" cache with the previous run's readings (the receiver must still be present to show them).</summary>
+    public void Restore(IEnumerable<DeviceBattery> lastKnown)
+    {
+        foreach (var d in lastKnown.Where(d => d.Source == "logitech" && !_known.ContainsKey(d.Id)))
+            _known[d.Id] = new Known { Name = d.Name, Kind = d.Kind, Last = d };
+    }
 
     public string Name => "Logitech HID++";
     public event Action? DevicesChanged { add { } remove { } }

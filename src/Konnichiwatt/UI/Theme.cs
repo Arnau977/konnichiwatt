@@ -138,8 +138,10 @@ internal static class Theme
     {
         if (d.Stale)
         {
-            var mins = (int)(DateTime.Now - (d.LastSeen ?? DateTime.Now)).TotalMinutes;
-            return mins < 1 ? "En reposo" : $"En reposo · dato de hace {mins} min";
+            var ago = DateTime.Now - (d.LastSeen ?? DateTime.Now);
+            return ago.TotalMinutes < 1 ? "En reposo"
+                 : ago.TotalHours < 1 ? $"En reposo · dato de hace {(int)ago.TotalMinutes} min"
+                 : $"En reposo · dato de hace {(int)ago.TotalHours} h";
         }
         return d.State switch
         {

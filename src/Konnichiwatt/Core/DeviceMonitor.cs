@@ -15,6 +15,7 @@ public sealed class DeviceMonitor : IDisposable
     private readonly Thread _thread;
     private readonly System.Threading.Timer _debounce;
     private readonly object _pollLock = new();
+    private readonly ReadingStore _store = ReadingStore.Load();
     private volatile bool _stopping;
 
     public TimeSpan Interval { get; set; }
@@ -28,6 +29,11 @@ public sealed class DeviceMonitor : IDisposable
         Interval = interval;
         _debounce = new System.Threading.Timer(_ => _wake.Set());
         foreach (var p in _providers) p.DevicesChanged += RequestPollSoon;
+        foreach (var r in _providers.OfType<IRestorable>())
+        {
+            try { r.Restore(_store.All); }
+            catch (Exception e) { Log.Error("Restore readings", e); }
+        }
         HidSharp.DeviceList.Local.Changed += (_, _) => RequestPollSoon();
         _thread = new Thread(Loop) { IsBackground = true, Name = "BatteryPoll", Priority = ThreadPriority.BelowNormal };
     }
@@ -45,6 +51,7 @@ public sealed class DeviceMonitor : IDisposable
         {
             var list = PollAll(null);
             Current = list;
+            _store.Update(list);
             _ui.Post(_ => { if (!_stopping) Updated?.Invoke(list); }, null);
             _wake.WaitOne(Interval);
         }
@@ -123,6 +130,7 @@ public sealed class DeviceMonitor : IDisposable
     {
         _stopping = true;
         _wake.Set();
+        _store.Save();
         _debounce.Dispose();
         foreach (var p in _providers)
         {
