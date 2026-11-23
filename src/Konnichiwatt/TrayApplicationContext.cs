@@ -36,7 +36,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// <summary>Another launch of the app (open settings) or the installer (quit) talking to us.</summary>
     private IDisposable? _instanceListener;
 
-    public TrayApplicationContext(bool openSettings = false, string? updatedFrom = null, bool justInstalled = false)
+    public TrayApplicationContext(bool openSettings = false, string? updatedFrom = null, bool justInstalled = false,
+                                  string? rolledBack = null)
     {
         L.Init(_settings.Language);
         _lastThresholds = ThresholdsSignature();
@@ -97,8 +98,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _monitor.Start();
         Log.Write($"Started {Updater.CurrentVersion.ToString(3)}");
-        if (updatedFrom != null)
-            Notify(L.UpdatedTitle, L.UpdatedBody(Updater.CurrentVersion.ToString(3)), ToolTipIcon.Info);
+        var version = Updater.CurrentVersion.ToString(3);
+        if (rolledBack != null)
+        {
+            _settings.SkippedVersion = rolledBack;
+            _settings.Save();
+            Notify(L.RolledBackTitle, L.RolledBackBody(rolledBack, version), ToolTipIcon.Warning);
+        }
+        else if (updatedFrom != null)
+        {
+            // Confirms to the previous version (waiting in the background) that this one works; otherwise it rolls back.
+            var healthTimer = new System.Windows.Forms.Timer { Interval = (int)Updater.HealthyAfter.TotalMilliseconds };
+            healthTimer.Tick += (_, _) => { healthTimer.Dispose(); Updater.ReportHealthy(); };
+            healthTimer.Start();
+            ShowWhatsNew(version);
+        }
         else if (justInstalled)
             Notify(L.InstalledTitle, L.InstalledBody, ToolTipIcon.Info, OpenSettings);
         if (openSettings) OpenSettings();
@@ -109,6 +123,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     // ---- Updates -----------------------------------------------------------------------
 
+    /// <summary>"Updated to X" with the first changes; clicking opens the full list in Settings › General.</summary>
+    private void ShowWhatsNew(string version)
+    {
+        var notes = ReleaseNotes.Embedded.For(version);
+        _settings.NotesSeenVersion = version;
+        _settings.Save();
+        Notify(L.UpdatedTitle, L.UpdatedBody(version, notes), ToolTipIcon.Info, () => OpenSettings(SettingsWindow.GeneralPage));
+    }
+
     private void Notify(string title, string body, ToolTipIcon icon, Action? onClick = null)
     {
         _balloonClick = onClick;
@@ -118,14 +141,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// <summary>Checks the manifest; installs automatically or offers it, depending on the setting.</summary>
     private async Task CheckForUpdatesAsync(bool userInitiated)
     {
-        var m = await _updater.CheckAsync();
+        var m = await _updater.CheckAsync(_settings.BetaUpdates, _settings.SkippedVersion);
         _settingsWindow?.UpdatesChanged();
         if (m == null) return;
         if (_settings.AutoUpdate && !userInitiated) await InstallUpdateAsync(m);
         else if (_announcedVersion != m.Version || userInitiated)
         {
             _announcedVersion = m.Version;
-            Notify(L.UpdateAvailableTitle, L.UpdateAvailableBody(m.Version), ToolTipIcon.Info, () => _ = InstallUpdateAsync(m));
+            Notify(L.UpdateAvailableTitle, L.UpdateAvailableBody(m.Version, ReleaseNotes.Parse(m.Notes).For(m.Version)),
+                   ToolTipIcon.Info, () => _ = InstallUpdateAsync(m));
         }
     }
 
@@ -221,12 +245,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
         UpdateTrayIcon();
     }
 
-    private void OpenSettings()
+    private void OpenSettings() => OpenSettings(null);
+
+    private void OpenSettings(int? page)
     {
         _popup.Hide();
         if (_settingsWindow is { IsDisposed: false })
         {
             if (_settingsWindow.WindowState == FormWindowState.Minimized) _settingsWindow.WindowState = FormWindowState.Normal;
+            if (page is int p) _settingsWindow.ShowPage(p);
             _settingsWindow.Activate();
             return;
         }
@@ -236,6 +263,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Updater: _updater,
             CheckForUpdates: () => CheckForUpdatesAsync(userInitiated: true),
             InstallUpdate: () => { if (_updater.Available is { } m) _ = InstallUpdateAsync(m); },
+            History: _history,
+            ReportDevice: ReportDevice,
             Changed: OnSettingsChanged,
             PollNow: _monitor.RequestPoll,
             Diagnostics: RunDiagnostics,
@@ -243,6 +272,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 L.TestNotificationBody, ToolTipIcon.Info)),
             AppIcon());
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
+        if (page is int start) _settingsWindow.ShowPage(start);
         _settingsWindow.Show();
         _settingsWindow.Activate();
     }
@@ -346,17 +376,43 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _menu.Items.Add(L.Exit, null, (_, _) => ExitThread());
     }
 
+    /// <summary>
+    /// "Device missing?": writes the diagnostics report, shows it selected in Explorer (to drag into the form) and opens
+    /// the GitHub issue form with version and Windows already filled in. Nothing is uploaded by the app itself.
+    /// </summary>
+    private void ReportDevice()
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                var path = WriteDiagnostics(redact: true);
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+                var url = $"{Installer.RepoUrl}/issues/new?template=dispositivo.yml" +
+                          $"&version={Uri.EscapeDataString(Updater.CurrentVersion.ToString(3))}" +
+                          $"&windows={Uri.EscapeDataString(Environment.OSVersion.Version.ToString())}";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception e) { Log.Error("Report device", e); }
+        });
+    }
+
+    private string WriteDiagnostics(bool redact = false)
+    {
+        var text = redact ? DiagnosticsRedactor.Redact(_monitor.BuildDiagnostics()) : _monitor.BuildDiagnostics();
+        Directory.CreateDirectory(Log.Directory);
+        var path = Path.Combine(Log.Directory, "diagnostico.txt");
+        File.WriteAllText(path, text);
+        return path;
+    }
+
     private void RunDiagnostics()
     {
         Task.Run(() =>
         {
             try
             {
-                var text = _monitor.BuildDiagnostics();
-                Directory.CreateDirectory(Log.Directory);
-                var path = Path.Combine(Log.Directory, "diagnostico.txt");
-                File.WriteAllText(path, text);
-                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(WriteDiagnostics()) { UseShellExecute = true });
             }
             catch (Exception e) { Log.Error("Diagnostics", e); }
         });

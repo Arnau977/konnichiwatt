@@ -27,12 +27,15 @@ el SHA-256 y se reemplazan a sí mismas (se puede desactivar en *Ajustes › Gen
 
 ## Publicar una versión
 
-```powershell
-git tag v0.3.1; git push origin v0.3.1
-```
+1. Añade la sección de la versión a [`CHANGELOG.md`](CHANGELOG.md) (`- español // English` por cambio) y sube la
+   versión en `src/Konnichiwatt/Konnichiwatt.csproj`.
+2. **Beta**: `git tag v0.4.1; git push origin v0.4.1`. El workflow *Release (beta)* ejecuta los tests, compila y
+   publica una *pre-release*. Solo la reciben las copias con *Versiones de prueba (beta)* activado.
+3. **Estable**: cuando la beta está probada, ejecuta el workflow *Promote to stable* con esa etiqueta
+   (`gh workflow run promote.yml -f tag=v0.4.1`). Pasa a ser la última release y todas las copias se actualizan
+   con exactamente el mismo `.exe` que se probó.
 
-El workflow *Release* ejecuta los tests, compila el `.exe` con la dirección de actualizaciones y publica
-`Konnichiwatt.exe`, `update.json` y `Konnichiwatt-portable.zip` en GitHub Releases.
+Si una versión nueva no llega a arrancar, la anterior se restaura sola, avisa y no vuelve a instalar esa versión.
 
 ## Dispositivos soportados
 
@@ -66,12 +69,13 @@ Un ratón Logitech que deja de responder (reposo) sigue mostrándose atenuado co
 - **Clic izquierdo en el widget** → refrescar ahora. **Clic derecho** → menú rápido (baterías, actualizar, ajustes, salir).
 - **Clic en el icono de la bandeja** → ventana de **Ajustes**:
   - *Dispositivos*: renombrar, cambiar icono, ordenar, mostrar/ocultar, ocultar mientras cargan.
+  - *Historial*: gráfica de 2, 7 o 30 días por dispositivo y autonomía media por carga.
   - *Apariencia*: porcentaje / icono de batería / ambos, texto grueso, en qué pantallas aparece (con vista previa).
   - *Avisos*: batería baja (umbral ajustable), carga completa, aviso de prueba.
-  - *General*: iniciar con Windows, frecuencia de lectura, idioma, actualizaciones, diagnóstico, desinstalar.
+  - *General*: iniciar con Windows, frecuencia de lectura, idioma, actualizaciones (y beta), novedades, diagnóstico, "¿Falta algún dispositivo?" (informe + formulario en GitHub), desinstalar.
 - Funciona también en la barra de tareas de monitores secundarios y en barras verticales (ExplorerPatcher / StartAllBack).
 
-Opciones de línea de comandos: `--settings` (abre los ajustes al iniciar), `--uninstall [--quiet]`, `--diag salida.txt`,
+Opciones de línea de comandos: `--settings` (abre los ajustes al iniciar), `--install --silent [--no-startup]`, `--uninstall [--quiet]`, `--diag salida.txt`,
 `--preview estilos.png` (todos los estilos del widget), `--settings-shot carpeta` (capturas de la ventana de ajustes).
 
 Ajustes: `%APPDATA%\Konnichiwatt\settings.json` · Log: `%LOCALAPPDATA%\Konnichiwatt\konnichiwatt.log` (en modo portable, todo en `data\` junto al `.exe`)
@@ -108,3 +112,7 @@ Windows 11 eliminó las "deskbands", así que el widget es una ventana *layered*
 ## Añadir un dispositivo
 
 Implementa `IBatteryProvider` (`src/Konnichiwatt/Devices`) y regístralo en `Program.CreateProviders()`.
+
+## Licencia
+
+[MIT](LICENSE): puedes usar, copiar, modificar y compartir el código libremente manteniendo el aviso de copyright.

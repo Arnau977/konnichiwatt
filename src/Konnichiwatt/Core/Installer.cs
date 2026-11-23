@@ -73,6 +73,7 @@ internal static class Installer
     public static void Install(bool startWithWindows)
     {
         var source = Environment.ProcessPath ?? throw new InvalidOperationException("No process path");
+        if (SamePath(source, InstalledExe)) { Register(createShortcut: true); Startup.Set(startWithWindows, InstalledExe); return; }
         AppInstance.StopRunning();
 
         Directory.CreateDirectory(InstallDirectory);

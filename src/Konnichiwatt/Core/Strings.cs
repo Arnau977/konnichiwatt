@@ -151,9 +151,55 @@ internal static class L
     public static string UpdatesNotConfigured => T("Esta copia no busca actualizaciones", "This copy doesn't check for updates");
     public static string CheckFailed => T("No se pudo comprobar; se reintentará más tarde", "Couldn't check; will retry later");
     public static string UpdatedTitle => T("Konnichiwatt actualizado", "Konnichiwatt updated");
-    public static string UpdatedBody(string v) => T($"Ahora tienes la versión {v}.", $"You now have version {v}.");
+    public static string UpdatedBody(string v, IReadOnlyList<string> notes) =>
+        Balloon(T($"Ahora tienes la versión {v}.", $"You now have version {v}."), notes,
+                T("Haz clic para ver todas las novedades.", "Click to see everything that's new."));
+    public static string RolledBackTitle => T("Actualización deshecha", "Update undone");
+    public static string RolledBackBody(string failed, string current) =>
+        T($"La versión {failed} no arrancó bien, así que has vuelto a la {current}. No se volverá a instalar.",
+          $"Version {failed} didn't start properly, so you're back on {current}. It won't be installed again.");
+    public static string BetaUpdates => T("Versiones de prueba (beta)", "Test versions (beta)");
+    public static string BetaUpdatesDesc => T("Recibe las novedades antes que nadie; pueden tener fallos", "Get new features first; they may have bugs");
+    public static string WhatsNew(string v) => T($"Novedades de la versión {v}", $"What's new in version {v}");
+
+    /// <summary>Balloon text: headline, the first changes as bullets, and a closing hint, within Windows' 255-char limit.</summary>
+    private static string Balloon(string head, IReadOnlyList<string> notes, string tail, bool tailAlways = false)
+    {
+        if (notes.Count == 0) return tailAlways ? $"{head} {tail}" : head;
+        var text = head;
+        foreach (var n in notes.Take(2))
+        {
+            var bullet = "\n• " + (n.Length > 70 ? n[..67].TrimEnd() + "…" : n);
+            if (text.Length + bullet.Length + tail.Length + 1 > 250) break;
+            text += bullet;
+        }
+        return text + "\n" + tail;
+    }
     public static string UpdateAvailableTitle => T("Nueva versión disponible", "New version available");
-    public static string UpdateAvailableBody(string v) => T($"Konnichiwatt {v} está lista. Haz clic aquí para instalarla.", $"Konnichiwatt {v} is ready. Click here to install it.");
+    public static string UpdateAvailableBody(string v, IReadOnlyList<string> notes) =>
+        Balloon(T($"Konnichiwatt {v} está lista.", $"Konnichiwatt {v} is ready."), notes,
+                T("Haz clic aquí para instalarla.", "Click here to install it."), tailAlways: true);
+
+    // ---- Device reports -------------------------------------------------------------------
+    public static string ReportDevice => T("¿Falta algún dispositivo?", "Device missing?");
+    public static string ReportDeviceDesc =>
+        T("Genera un informe y abre un formulario en GitHub para pedir que se añada", "Creates a report and opens a GitHub form to ask for it to be added");
+    public static string ReportButton => T("Reportar", "Report");
+
+    // ---- History page ---------------------------------------------------------------------
+    public static string PageHistory => T("Historial", "History");
+    public static string NoHistory => T("Todavía no hay datos. El historial se va llenando mientras la app está abierta.",
+                                        "No data yet. The history fills up while the app is running.");
+    public static string Period => T("Periodo", "Period");
+    public static string Days2 => T("2 días", "2 days");
+    public static string Days7 => T("7 días", "7 days");
+    public static string Days30 => T("30 días", "30 days");
+    public static string BatteryLife => T("Autonomía por carga", "Battery life per charge");
+    public static string BatteryLifeValue(string amount, int n) =>
+        T($"≈ {amount} (media de {n} descargas)", $"≈ {amount} (average of {n} discharges)");
+    public static string NotEnoughData => T("Faltan datos: hace falta una descarga de al menos 10 %", "Not enough data: needs a discharge of at least 10 %");
+    public static string ChargesCount(int n) => T(n == 1 ? "1 carga" : $"{n} cargas", n == 1 ? "1 charge" : $"{n} charges");
+    public static string LastFullCharge(string when) => T($"Última carga: {when}", $"Last charge: {when}");
     public static string UpdateFailedTitle => T("No se pudo actualizar", "Update failed");
     public static string UpdateFailedBody => T("Se volverá a intentar más tarde.", "It will be retried later.");
     public static string Portable => T("portable", "portable");

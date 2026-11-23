@@ -9,7 +9,7 @@ namespace Konnichiwatt.UI;
 /// Settings window in the style of the widget's hover flyout / Windows 11 Settings: side navigation, cards,
 /// toggle switches. Every change is applied (and saved) immediately through <see cref="Callbacks.Changed"/>.
 /// </summary>
-internal sealed class SettingsWindow : Form
+internal sealed partial class SettingsWindow : Form
 {
     internal sealed record Callbacks(
         Func<IReadOnlyList<DeviceBattery>> RawDevices,
@@ -19,12 +19,17 @@ internal sealed class SettingsWindow : Form
         Action Diagnostics,
         Action TestNotification,
         Updater? Updater = null,
+        BatteryHistory? History = null,
         Func<Task>? CheckForUpdates = null,
-        Action? InstallUpdate = null);
+        Action? InstallUpdate = null,
+        Action? ReportDevice = null);
+
+    public const int DevicesPage = 0, HistoryPage = 1, AppearancePage = 2, AlertsPage = 3, GeneralPage = 4;
+    private const string HistoryGlyph = "", ReportGlyph = "", BetaGlyph = "", NotesGlyph = "";
 
     private static (string Glyph, string Title)[] Pages => new[]
     {
-        ("", L.PageDevices), ("", L.PageAppearance), ("", L.PageAlerts), ("", L.PageGeneral),
+        ("", L.PageDevices), (HistoryGlyph, L.PageHistory), ("", L.PageAppearance), ("", L.PageAlerts), ("", L.PageGeneral),
     };
 
     private static (string Label, DeviceKind Kind)[] IconChoices => new[]
@@ -164,7 +169,7 @@ internal sealed class SettingsWindow : Form
     /// </summary>
     private int CardWidth => _content.ClientSize.Width - (_content.VerticalScroll.Visible ? 0 : SystemInformation.VerticalScrollBarWidth) - F.Px(8);
 
-    private void ShowPage(int index)
+    public void ShowPage(int index)
     {
         _page = index;
         for (int i = 0; i < _nav.Count; i++) _nav[i].Selected = i == index;
@@ -178,9 +183,10 @@ internal sealed class SettingsWindow : Form
         _preview = null;
         switch (index)
         {
-            case 0: BuildDevices(); break;
-            case 1: BuildAppearance(); break;
-            case 2: BuildAlerts(); break;
+            case DevicesPage: BuildDevices(); break;
+            case HistoryPage: BuildHistory(); break;
+            case AppearancePage: BuildAppearance(); break;
+            case AlertsPage: BuildAlerts(); break;
             default: BuildGeneral(); break;
         }
         _content.ResumeLayout();
@@ -226,7 +232,7 @@ internal sealed class SettingsWindow : Form
     /// <summary>Called when a poll brings new data: rebuilds rows only if devices/order changed, so typing isn't interrupted.</summary>
     public void RefreshDevices(bool force = false)
     {
-        if (_page != 0 || IsDisposed) return;
+        if (_page != DevicesPage || IsDisposed) return;
         if (_list?.IsDragging == true) return; // don't rebuild the row under the pointer; the next poll will
         var raw = _cb.RawDevices();
         var arranged = _s.Arrange(raw);
@@ -441,7 +447,7 @@ internal sealed class SettingsWindow : Form
     /// <summary>Monitors were plugged/unplugged or rearranged: refresh the list if it's on screen.</summary>
     public void DisplaysChanged()
     {
-        if (_page == 1 && !IsDisposed) ShowPage(1);
+        if (_page == AppearancePage && !IsDisposed) ShowPage(AppearancePage);
     }
 
     private void BuildAlerts()
@@ -502,6 +508,12 @@ internal sealed class SettingsWindow : Form
         var diag = new FlatButton(L.GenerateReport);
         diag.Click += (_, _) => _cb.Diagnostics();
         _content.Controls.Add(Card("", L.Diagnostics, L.DiagnosticsDesc, diag));
+        if (_cb.ReportDevice != null)
+        {
+            var report = new FlatButton(L.ReportButton);
+            report.Click += (_, _) => _cb.ReportDevice();
+            _content.Controls.Add(Card(ReportGlyph, L.ReportDevice, L.ReportDeviceDesc, report));
+        }
 
         var open = new FlatButton(L.Open);
         open.Click += (_, _) =>
@@ -537,6 +549,9 @@ internal sealed class SettingsWindow : Form
         var auto = new ToggleSwitch(_s.AutoUpdate) { Enabled = Updater.CanSelfUpdate };
         auto.CheckedChanged += (_, _) => { _s.AutoUpdate = auto.Checked; Changed(); };
         _content.Controls.Add(Card("", L.AutoUpdate, null, auto));
+        var beta = new ToggleSwitch(_s.BetaUpdates) { Enabled = Updater.CanSelfUpdate };
+        beta.CheckedChanged += (_, _) => { _s.BetaUpdates = beta.Checked; Changed(); };
+        _content.Controls.Add(Card(BetaGlyph, L.BetaUpdates, L.BetaUpdatesDesc, beta));
 
         _updateButton = new FlatButton(L.CheckNow) { Enabled = Updater.CanSelfUpdate };
         _updateButton.Click += async (_, _) =>
@@ -551,6 +566,7 @@ internal sealed class SettingsWindow : Form
         var version = $"Konnichiwatt {Updater.CurrentVersion.ToString(3)}" + (AppPaths.IsPortable ? $" ({L.Portable})" : "");
         _updateCard = Card("", version, UpdateStatus(), _updateButton);
         _content.Controls.Add(_updateCard);
+        AddWhatsNew();
     }
 
     private string UpdateStatus()
@@ -566,7 +582,7 @@ internal sealed class SettingsWindow : Form
     /// <summary>The updater checked / found something: refresh the card if it's on screen.</summary>
     public void UpdatesChanged()
     {
-        if (_page != 3 || IsDisposed || _updateCard == null || _updateButton == null) return;
+        if (_page != GeneralPage || IsDisposed || _updateCard == null || _updateButton == null) return;
         _updateCard.Description = UpdateStatus();
         var available = _cb.Updater?.Available;
         _updateButton.Text = available != null ? L.Install(available.Version) : L.CheckNow;
@@ -587,7 +603,7 @@ internal sealed class SettingsWindow : Form
     {
         Directory.CreateDirectory(dir);
         var samples = PreviewRenderer.Samples();
-        using var w = new SettingsWindow(settings, new Callbacks(() => samples, SampleEstimate, () => { }, () => { }, () => { }, () => { }), null)
+        using var w = new SettingsWindow(settings, new Callbacks(() => samples, SampleEstimate, () => { }, () => { }, () => { }, () => { }, History: SampleHistory(samples), ReportDevice: () => { }), null)
         {
             StartPosition = FormStartPosition.Manual,
             Location = new Point(-5000, -5000),

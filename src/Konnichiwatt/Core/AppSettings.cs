@@ -11,6 +11,12 @@ public sealed class AppSettings
 {
     /// <summary>Install new versions automatically (otherwise just notify).</summary>
     public bool AutoUpdate { get; set; } = true;
+    /// <summary>Receive test versions (pre-releases) before everyone else.</summary>
+    public bool BetaUpdates { get; set; }
+    /// <summary>A version that failed to start and was rolled back; it's not offered again.</summary>
+    public string? SkippedVersion { get; set; }
+    /// <summary>Last version whose "what's new" was shown, so it's shown once per update.</summary>
+    public string? NotesSeenVersion { get; set; }
     /// <summary>"auto" (follow Windows), "es" or "en".</summary>
     public string Language { get; set; } = "auto";
     public BatteryDisplay Display { get; set; } = BatteryDisplay.Percent;

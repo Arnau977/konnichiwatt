@@ -57,7 +57,8 @@ internal static class Program
             ApplicationConfiguration.Initialize();
             var samples = UI.PreviewRenderer.Samples();
             Application.Run(new UI.SettingsWindow(new AppSettings(),
-                new UI.SettingsWindow.Callbacks(() => samples, UI.SettingsWindow.SampleEstimate, () => { }, () => { }, () => { }, () => { }), null));
+                new UI.SettingsWindow.Callbacks(() => samples, UI.SettingsWindow.SampleEstimate, () => { }, () => { }, () => { }, () => { },
+                    History: UI.SettingsWindow.SampleHistory(samples), ReportDevice: () => { }), null));
             return;
         }
         if (args.Length >= 2 && args[0] == "--settings-shot")
@@ -88,6 +89,22 @@ internal static class Program
             return;
         }
 
+        // Unattended install (winget, scripts): --install --silent [--no-startup]. Exit code 0 = installed.
+        if (args.Contains("--install") && args.Contains("--silent"))
+        {
+            try
+            {
+                Installer.Install(startWithWindows: !args.Contains("--no-startup"));
+                Environment.ExitCode = 0;
+            }
+            catch (Exception e)
+            {
+                Log.Error("Silent install", e);
+                Environment.ExitCode = 1;
+            }
+            return;
+        }
+
         // A plain double-click on a downloaded copy: offer to install it (or update the installed one).
         if (args.Length == 0)
         {
@@ -106,20 +123,21 @@ internal static class Program
             }
         }
 
-        // Started by the updater: the previous version is still shutting down and holds the single-instance lock.
-        int updated = Array.IndexOf(args, "--updated");
-        string? updatedFrom = updated >= 0 && updated + 1 < args.Length ? args[updated + 1] : null;
+        // Started by the updater (--updated <previous>) or by a rollback (--rolledback <failed version>): the other
+        // process is still shutting down and holds the single-instance lock for a moment.
+        string? updatedFrom = ArgValue(args, "--updated");
+        string? rolledBack = ArgValue(args, "--rolledback");
+        bool handover = updatedFrom != null || rolledBack != null || args.Contains("--installed");
 
         using var mutex = new Mutex(false, AppInstance.MutexName);
         bool owned;
-        try { owned = mutex.WaitOne(updatedFrom != null || args.Contains("--installed") ? TimeSpan.FromSeconds(20) : TimeSpan.Zero); }
+        try { owned = mutex.WaitOne(handover ? TimeSpan.FromSeconds(20) : TimeSpan.Zero); }
         catch (AbandonedMutexException) { owned = true; } // previous instance ended without releasing it
         if (!owned)
         {
-            if (updatedFrom == null) AppInstance.SignalShow(); // already running: bring up its settings instead
+            if (!handover) AppInstance.SignalShow(); // already running: bring up its settings instead
             return;
         }
-        if (updatedFrom != null) Updater.CleanUpAfterUpdate();
 
         if (!AppPaths.IsPortable)
         {
@@ -137,12 +155,22 @@ internal static class Program
 #pragma warning restore WFO5001
         try
         {
+            if (Updater.SimulateStartupCrash) throw new InvalidOperationException("Simulated startup crash (test)");
             Application.Run(new TrayApplicationContext(openSettings: args.Contains("--settings"), updatedFrom: updatedFrom,
-                                                       justInstalled: args.Contains("--installed")));
+                                                       justInstalled: args.Contains("--installed"), rolledBack: rolledBack));
         }
         finally
         {
             mutex.ReleaseMutex(); // let an updated version start right away
         }
+        // If this run ended by installing an update: stay around (without UI) until the new version is confirmed,
+        // and put this version back if it isn't.
+        Updater.SuperviseHandover();
+    }
+
+    private static string? ArgValue(string[] args, string name)
+    {
+        int i = Array.IndexOf(args, name);
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
 }

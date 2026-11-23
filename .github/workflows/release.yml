@@ -1,7 +1,9 @@
-﻿name: Release
+﻿name: Release (beta)
 
-# Pushing a tag like v0.3.1 builds, tests and publishes a release. Installed copies look for
-# https://github.com/<owner>/<repo>/releases/latest/download/update.json and update themselves.
+# Pushing a tag like v0.4.1 builds, tests and publishes that version as a PRE-RELEASE:
+#  - copies with "Test versions (beta)" on get it right away (…/releases/download/beta/update.json);
+#  - everyone else only gets it once it's promoted with the "Promote to stable" workflow, which makes it the
+#    latest release (…/releases/latest/download/update.json). The promoted .exe is the same file that was tested.
 on:
   push:
     tags: ['v*']
@@ -24,16 +26,30 @@ jobs:
       - name: Publish single-file exe + update.json
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
-          ./tools/publish.ps1 `
-            -BaseUrl "https://github.com/${{ github.repository }}/releases/latest/download" `
-            -Version $version -Notes "${{ github.ref_name }}"
+          $tag = "${{ github.ref_name }}"
+          $repo = "https://github.com/${{ github.repository }}/releases"
+          ./tools/publish.ps1 -Version $tag.TrimStart('v') `
+            -BaseUrl "$repo/latest/download" `
+            -BetaManifestUrl "$repo/download/beta/update.json" `
+            -ExeUrl "$repo/download/$tag/Konnichiwatt.exe"
 
-      - name: Create GitHub release
+      - name: Create pre-release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" `
             publish/Konnichiwatt.exe publish/update.json publish/Konnichiwatt-portable.zip `
-            --title "Konnichiwatt ${{ github.ref_name }}" --generate-notes
+            --prerelease --title "Konnichiwatt ${{ github.ref_name }}" --notes-file publish/release-notes.md
+
+      - name: Point the beta channel at this version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view beta *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create beta --prerelease --target "${{ github.sha }}" --title "Canal beta" `
+              --notes "Solo contiene update.json del canal beta. Descargas: ver las releases con número de versión."
+          }
+          gh release upload beta publish/update.json --clobber

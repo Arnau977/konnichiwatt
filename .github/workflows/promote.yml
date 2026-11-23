@@ -1,0 +1,26 @@
+name: Promote to stable
+
+# Turns a tested pre-release (from "Release (beta)") into the latest release: from then on
+# …/releases/latest/download/update.json points at it and every installed copy updates itself.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to promote (e.g. v0.4.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark as latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release view "$TAG" --repo "${{ github.repository }}" --json isPrerelease,assets \
+            --jq '"pre-release: \(.isPrerelease), assets: \([.assets[].name] | join(", "))"'
+          gh release edit "$TAG" --repo "${{ github.repository }}" --prerelease=false --latest

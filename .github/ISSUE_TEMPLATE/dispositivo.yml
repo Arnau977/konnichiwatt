@@ -1,0 +1,52 @@
+name: Mi dispositivo no aparece / Device not listed
+description: Un dispositivo inalámbrico no sale en Konnichiwatt o su batería no se lee bien / A wireless device is missing or its battery reads wrong
+title: "[Dispositivo] "
+labels: ["dispositivo"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias. Konnichiwatt ha guardado un informe (`diagnostico.txt`) y lo ha abierto en el Explorador:
+        **arrástralo al último campo** para adjuntarlo. Solo contiene los dispositivos USB/Bluetooth detectados
+        y lo que respondieron; revísalo antes si quieres.
+
+        Thanks. Konnichiwatt saved a report (`diagnostico.txt`) and showed it in Explorer: **drag it into the last
+        field** to attach it. It only lists the detected USB/Bluetooth devices and their replies; feel free to check it first.
+  - type: input
+    id: device
+    attributes:
+      label: Dispositivo (marca y modelo exacto) / Device (brand and exact model)
+      placeholder: "Razer Viper V2 Pro, DualSense Edge…"
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Conexión / Connection
+      options:
+        - Dongle / receptor USB
+        - Bluetooth
+        - Cable USB
+        - No lo sé / Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: ¿Qué pasa? / What happens?
+      placeholder: "No aparece / sale pero sin % / el % no coincide con el de la app oficial…"
+  - type: input
+    id: version
+    attributes:
+      label: Versión de Konnichiwatt / Konnichiwatt version
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+  - type: textarea
+    id: report
+    attributes:
+      label: Informe diagnostico.txt / diagnostico.txt report
+      description: Arrastra aquí el archivo / Drag the file here
+    validations:
+      required: true

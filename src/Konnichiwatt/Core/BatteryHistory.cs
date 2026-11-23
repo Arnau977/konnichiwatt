@@ -6,18 +6,25 @@ namespace Konnichiwatt.Core;
 public sealed record BatterySample(DateTime Time, int Percent, bool Charging);
 
 /// <summary>
-/// Battery level over time per device (last 48 h), persisted to history.json. Feeds the flyout sparkline and the
+/// Battery level over time per device (last 30 days, full detail for 48 h), persisted to history.json. Feeds the
+/// flyout sparkline, the History page and the
 /// "time left" / "full in" estimates.
 /// </summary>
 public sealed class BatteryHistory
 {
-    public static readonly TimeSpan Keep = TimeSpan.FromHours(48);
+    public static readonly TimeSpan Keep = TimeSpan.FromDays(30);
+    /// <summary>Newer samples are kept as recorded; older ones are thinned to one per <see cref="ThinInterval"/>.</summary>
+    public static readonly TimeSpan Detailed = TimeSpan.FromHours(48);
+    private static readonly TimeSpan ThinInterval = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10);
     private static readonly string FilePath = Path.Combine(Log.Directory, "history.json");
 
     private readonly Dictionary<string, List<BatterySample>> _samples = new();
     private DateTime _savedAt = DateTime.Now;
     private bool _dirty;
+
+    /// <summary>Sets a device's whole history (demo data and tests).</summary>
+    internal void Replace(string id, List<BatterySample> samples) => _samples[id] = samples;
 
     public IReadOnlyList<BatterySample> For(string id) =>
         _samples.TryGetValue(id, out var l) ? l : Array.Empty<BatterySample>();
@@ -30,7 +37,7 @@ public sealed class BatteryHistory
             if (File.Exists(FilePath) &&
                 JsonSerializer.Deserialize<Dictionary<string, List<BatterySample>>>(File.ReadAllText(FilePath)) is { } data)
                 foreach (var (id, list) in data)
-                    h._samples[id] = list.Where(s => DateTime.Now - s.Time < Keep).OrderBy(s => s.Time).ToList();
+                    h._samples[id] = Thin(list.OrderBy(s => s.Time).ToList(), DateTime.Now);
         }
         catch (Exception e) { Log.Error("Load history", e); }
         return h;
@@ -52,10 +59,28 @@ public sealed class BatteryHistory
         if (_dirty && now - _savedAt > TimeSpan.FromMinutes(5)) Save();
     }
 
+    /// <summary>Drops samples older than <see cref="Keep"/> and thins those older than <see cref="Detailed"/>.</summary>
+    internal static List<BatterySample> Thin(List<BatterySample> list, DateTime now)
+    {
+        var result = new List<BatterySample>(list.Count);
+        BatterySample? kept = null;
+        foreach (var s in list)
+        {
+            if (now - s.Time > Keep) continue;
+            if (now - s.Time > Detailed && kept != null && s.Charging == kept.Charging && s.Time - kept.Time < ThinInterval)
+                continue;
+            result.Add(s);
+            kept = s;
+        }
+        return result;
+    }
+
     public void Save()
     {
         try
         {
+            var now = DateTime.Now;
+            foreach (var id in _samples.Keys.ToList()) _samples[id] = Thin(_samples[id], now);
             Directory.CreateDirectory(Log.Directory);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(_samples));
             _savedAt = DateTime.Now;
@@ -101,14 +126,62 @@ public sealed class BatteryHistory
         return TimeSpan.FromHours(hours);
     }
 
+    /// <summary>Summary of a period for the History page.</summary>
+    /// <param name="PerCharge">Battery life of a full 0→100 % charge at the observed drain rate.</param>
+    /// <param name="Discharges">Discharges that went into <paramref name="PerCharge"/> (each at least 10 %).</param>
+    /// <param name="Charges">Times it started charging.</param>
+    /// <param name="LastCharge">End of the most recent charge.</param>
+    public sealed record Stats(TimeSpan? PerCharge, int Discharges, int Charges, DateTime? LastCharge);
+
+    /// <summary>
+    /// Battery life per charge from every discharge since <paramref name="from"/>: total % used / total hours, only over
+    /// stretches without gaps over 2 h (PC off), so time when the level wasn't seen doesn't count.
+    /// </summary>
+    public static Stats Analyze(IReadOnlyList<BatterySample> samples, DateTime from)
+    {
+        var s = samples.Where(x => x.Time >= from).ToList();
+        double drop = 0, hours = 0;
+        int discharges = 0, charges = 0;
+        DateTime? lastCharge = null;
+        double runDrop = 0, runHours = 0;
+
+        void EndRun()
+        {
+            if (runDrop >= 10) { drop += runDrop; hours += runHours; discharges++; }
+            runDrop = runHours = 0;
+        }
+
+        for (int i = 0; i < s.Count; i++)
+        {
+            var cur = s[i];
+            if (cur.Charging) lastCharge = cur.Time;
+            if (i == 0) continue;
+            var prev = s[i - 1];
+            if (cur.Charging && !prev.Charging) { charges++; EndRun(); continue; }
+            if (cur.Charging || prev.Charging) continue;
+            var gap = cur.Time - prev.Time;
+            if (gap > TimeSpan.FromHours(2)) continue;           // not observed: neither time nor drop counts
+            if (cur.Percent > prev.Percent + 5) { EndRun(); continue; } // charged while we weren't looking
+            runDrop += Math.Max(0, prev.Percent - cur.Percent);
+            runHours += gap.TotalHours;
+        }
+        EndRun();
+
+        TimeSpan? perCharge = drop > 0 && hours > 0 ? TimeSpan.FromHours(100 / (drop / hours)) : null;
+        return new Stats(perCharge, discharges, charges, lastCharge);
+    }
+
     /// <summary>"≈ 6 h restantes" / "lleno en ≈ 40 min", or null.</summary>
     public string? EstimateText(string id)
     {
         var t = Estimate(For(id), out bool toFull);
         if (t is not TimeSpan span) return null;
-        string amount = span.TotalMinutes < 60 ? L.Minutes(Math.Max(1, (int)Math.Round(span.TotalMinutes / 5) * 5))
-                      : span.TotalHours < 48 ? L.Hours(Math.Round(span.TotalHours))
-                      : L.Days(Math.Round(span.TotalDays));
-        return toFull ? L.FullIn(amount) : L.TimeLeft(amount);
+        return toFull ? L.FullIn(Amount(span)) : L.TimeLeft(Amount(span));
     }
+
+    /// <summary>"40 min", "6 h", "3 días".</summary>
+    public static string Amount(TimeSpan span) =>
+        span.TotalMinutes < 60 ? L.Minutes(Math.Max(1, (int)Math.Round(span.TotalMinutes / 5) * 5))
+        : span.TotalHours < 48 ? L.Hours(Math.Round(span.TotalHours))
+        : L.Days(Math.Round(span.TotalDays));
 }
