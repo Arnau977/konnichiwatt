@@ -37,11 +37,16 @@ Un ratón Logitech que deja de responder (reposo) sigue mostrándose atenuado co
 ## Uso
 
 - **Pasar el ratón** por encima del widget → detalle por dispositivo.
-- **Clic izquierdo** → refrescar ahora. **Clic derecho** (o clic en el icono de la bandeja) → menú:
-  mostrar/ocultar widget, **mostrar batería como** (porcentaje / icono / ambos), **texto e iconos gruesos**,
-  iniciar con Windows, aviso de batería baja, frecuencia de lectura, ocultar dispositivos, diagnóstico.
+- **Clic izquierdo en el widget** → refrescar ahora. **Clic derecho** → menú rápido (baterías, actualizar, ajustes, salir).
+- **Clic en el icono de la bandeja** → ventana de **Ajustes**:
+  - *Dispositivos*: renombrar, cambiar icono, ordenar, mostrar/ocultar, ocultar mientras cargan.
+  - *Apariencia*: porcentaje / icono de batería / ambos, texto grueso, en qué pantallas aparece (con vista previa).
+  - *Avisos*: batería baja (umbral ajustable), carga completa, aviso de prueba.
+  - *General*: iniciar con Windows, frecuencia de lectura, diagnóstico.
+- Funciona también en la barra de tareas de monitores secundarios y en barras verticales (ExplorerPatcher / StartAllBack).
 
-Vista previa de todos los estilos sin tocar la barra: `Konnichiwatt.exe --preview estilos.png`
+Opciones de línea de comandos: `--settings` (abre los ajustes al iniciar), `--diag salida.txt`,
+`--preview estilos.png` (todos los estilos del widget), `--settings-shot carpeta` (capturas de la ventana de ajustes).
 
 Ajustes: `%APPDATA%\Konnichiwatt\settings.json` · Log: `%LOCALAPPDATA%\Konnichiwatt\konnichiwatt.log`
 
