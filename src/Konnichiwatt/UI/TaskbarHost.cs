@@ -18,6 +18,7 @@ internal sealed class TaskbarHost : IDisposable
 
     public event Action? LeftClick;
     public event Action? RightClick;
+    public event Action? Pressed;
     public event Action<TaskbarWidget, bool>? HoverChanged;
 
     public TaskbarHost(AppSettings settings) => _settings = settings;
@@ -74,6 +75,7 @@ internal sealed class TaskbarHost : IDisposable
             var w = new TaskbarWidget(_settings, handle, primary, _anchors.Get);
             w.LeftClick += () => LeftClick?.Invoke();
             w.RightClick += () => RightClick?.Invoke();
+            w.Pressed += () => Pressed?.Invoke();
             w.HoverChanged += (widget, hover) => HoverChanged?.Invoke(widget, hover);
             _widgets[handle] = w;
             w.SetDevices(_devices);

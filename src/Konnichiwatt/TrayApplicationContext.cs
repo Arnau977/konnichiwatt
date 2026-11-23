@@ -20,6 +20,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly HashSet<string> _chargingIncomplete = new();
     private IReadOnlyList<DeviceBattery> _all = Array.Empty<DeviceBattery>();
     private TaskbarWidget? _hovered;
+    /// <summary>Set by a right click: no hover flyout until the mouse leaves the widget.</summary>
+    private bool _suppressPopup;
     private SettingsWindow? _settingsWindow;
     private IntPtr _trayIconHandle;
     private int _lastThreshold;
@@ -31,14 +33,31 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _monitor.Updated += OnUpdated;
 
         _taskbars = new TaskbarHost(_settings);
-        _taskbars.RightClick += ShowMenuAtCursor;
+        _taskbars.RightClick += () => { _suppressPopup = true; ShowMenuAtCursor(); };
         _taskbars.LeftClick += () => _monitor.RequestPoll();
+        // Any click cancels the pending flyout, so it can't pop up over (and close) the context menu.
+        _taskbars.Pressed += () => _hoverTimer.Stop();
         _taskbars.HoverChanged += (widget, hover) =>
         {
-            if (hover) { _hovered = widget; _hoverTimer.Start(); }
-            else if (widget == _hovered) { _hoverTimer.Stop(); _popup.Hide(); _hovered = null; }
+            if (hover)
+            {
+                _hovered = widget;
+                if (!_suppressPopup && !_menu.Visible) _hoverTimer.Start();
+            }
+            else if (widget == _hovered)
+            {
+                _hoverTimer.Stop();
+                _popup.Hide();
+                _hovered = null;
+                _suppressPopup = false; // leaving the widget re-arms the flyout
+            }
         };
-        _hoverTimer.Tick += (_, _) => { _hoverTimer.Stop(); ShowPopup(); };
+        _hoverTimer.Tick += (_, _) =>
+        {
+            _hoverTimer.Stop();
+            if (_suppressPopup || _menu.Visible) return;
+            ShowPopup();
+        };
 
         _menu.Opening += (_, _) => BuildMenu();
         _tray = new NotifyIcon { Text = "Konnichiwatt", ContextMenuStrip = _menu, Visible = true };

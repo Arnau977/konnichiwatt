@@ -25,6 +25,8 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
 
     public event Action? LeftClick;
     public event Action? RightClick;
+    /// <summary>A mouse button went down: lets the owner cancel the pending hover flyout before the click lands.</summary>
+    public event Action? Pressed;
     public event Action<TaskbarWidget, bool>? HoverChanged;
 
     public TaskbarWidget(AppSettings settings, IntPtr taskbar, bool primary, Func<IntPtr, Rectangle?> anchorOf)
@@ -378,6 +380,10 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
             case WM_MOUSELEAVE:
                 _tracking = false;
                 if (_hover) { _hover = false; Refresh(force: true); HoverChanged?.Invoke(this, false); }
+                break;
+            case WM_LBUTTONDOWN:
+            case WM_RBUTTONDOWN:
+                Pressed?.Invoke();
                 break;
             case WM_LBUTTONUP:
                 LeftClick?.Invoke();
