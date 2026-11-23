@@ -8,6 +8,26 @@ Batería de tus dispositivos inalámbricos siempre visible en la barra de tareas
  🎧 28%   🖱 62%   ^  …  ESP  🔊  13:22
 ```
 
+## Descargar
+
+**[Descargar Konnichiwatt.exe (última versión)](https://github.com/Arnau977/konnichiwatt/releases/latest/download/Konnichiwatt.exe)**
+
+Un solo archivo, sin instalar nada (incluye .NET). Ponlo en una carpeta fija (por ejemplo
+`%LOCALAPPDATA%\Programs\Konnichiwatt`) y ábrelo. La primera vez Windows SmartScreen puede avisar porque el
+ejecutable no está firmado: *Más información → Ejecutar de todas formas*.
+
+Se **actualiza solo**: comprueba nuevas versiones al minuto de arrancar y cada 12 h, verifica el SHA-256 y se
+reemplaza a sí mismo (se puede desactivar en *Ajustes › General*).
+
+## Publicar una versión
+
+```powershell
+git tag v0.3.1; git push origin v0.3.1
+```
+
+El workflow *Release* ejecuta los tests, compila el `.exe` con la dirección de actualizaciones y publica
+`Konnichiwatt.exe`, `update.json` y el `.zip` en GitHub Releases.
+
 ## Dispositivos soportados
 
 | Familia | Cómo se lee | Notas |
