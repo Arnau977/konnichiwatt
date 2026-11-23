@@ -31,7 +31,9 @@ public sealed class Updater
 
     /// <summary>Updating replaces the .exe file, which only makes sense for the single-file published build.</summary>
     public static bool CanSelfUpdate =>
+#pragma warning disable IL3000 // intentional: an empty Location is exactly how we detect the single-file build
         ManifestUrl != null && string.IsNullOrEmpty(typeof(Updater).Assembly.Location) && Environment.ProcessPath != null;
+#pragma warning restore IL3000
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
 
