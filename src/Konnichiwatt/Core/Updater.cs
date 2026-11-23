@@ -30,9 +30,12 @@ public sealed class Updater
     public static Version CurrentVersion { get; } = typeof(Updater).Assembly.GetName().Version ?? new Version(0, 0);
 
     /// <summary>Updating replaces the .exe file, which only makes sense for the single-file published build.</summary>
-    public static bool CanSelfUpdate =>
+    public static bool CanSelfUpdate => ManifestUrl != null && IsSingleFile;
+
+    /// <summary>True for the published single .exe; false when running from a build folder (development).</summary>
+    public static bool IsSingleFile =>
 #pragma warning disable IL3000 // intentional: an empty Location is exactly how we detect the single-file build
-        ManifestUrl != null && string.IsNullOrEmpty(typeof(Updater).Assembly.Location) && Environment.ProcessPath != null;
+        string.IsNullOrEmpty(typeof(Updater).Assembly.Location) && Environment.ProcessPath != null;
 #pragma warning restore IL3000
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };

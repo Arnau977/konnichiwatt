@@ -35,5 +35,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" `
-            publish/Konnichiwatt.exe publish/update.json publish/Konnichiwatt.zip `
+            publish/Konnichiwatt.exe publish/update.json publish/Konnichiwatt-portable.zip `
             --title "Konnichiwatt ${{ github.ref_name }}" --generate-notes

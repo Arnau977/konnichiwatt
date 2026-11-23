@@ -56,7 +56,8 @@ internal static class Theme
     }
 
     /// <summary>Text colour readable on top of <paramref name="background"/>.</summary>
-    public static Color OnColor(Color background) => Luminance(background) > 0.45 ? Color.Black : Color.White;
+    /// <summary>Black or white, whichever contrasts more with <paramref name="background"/> (WCAG crossover ≈ 0.179).</summary>
+    public static Color OnColor(Color background) => Luminance(background) > 0.179 ? Color.Black : Color.White;
 
     private static double Luminance(Color c)
     {

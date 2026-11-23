@@ -510,7 +510,20 @@ internal sealed class SettingsWindow : Form
             catch (Exception e) { Log.Error("Open folder", e); }
         };
         _content.Controls.Add(Card("", L.LogsFolder, Log.Directory, open));
+
+        if (Installer.IsInstalledCopy)
+        {
+            var uninstall = new FlatButton(L.UninstallButton);
+            uninstall.Click += (_, _) =>
+            {
+                try { Process.Start(new ProcessStartInfo(Installer.InstalledExe, "--uninstall") { UseShellExecute = false }); }
+                catch (Exception e) { Log.Error("Start uninstall", e); }
+            };
+            _content.Controls.Add(Card(UninstallGlyph, L.UninstallButton, L.UninstallCardDesc, uninstall));
+        }
     }
+
+    private const string UninstallGlyph = "";
 
     // ---- Updates ---------------------------------------------------------------------
 
@@ -535,7 +548,8 @@ internal sealed class SettingsWindow : Form
             try { await _cb.CheckForUpdates(); }
             finally { _checking = false; UpdatesChanged(); }
         };
-        _updateCard = Card("", $"Konnichiwatt {Updater.CurrentVersion.ToString(3)}", UpdateStatus(), _updateButton);
+        var version = $"Konnichiwatt {Updater.CurrentVersion.ToString(3)}" + (AppPaths.IsPortable ? $" ({L.Portable})" : "");
+        _updateCard = Card("", version, UpdateStatus(), _updateButton);
         _content.Controls.Add(_updateCard);
     }
 

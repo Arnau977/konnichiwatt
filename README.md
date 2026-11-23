@@ -8,14 +8,22 @@ Batería de tus dispositivos inalámbricos siempre visible en la barra de tareas
 
 ## Descargar
 
-**[Descargar Konnichiwatt.exe (última versión)](https://github.com/Arnau977/konnichiwatt/releases/latest/download/Konnichiwatt.exe)**
+**[Descargar Konnichiwatt.exe (instalador)](https://github.com/Arnau977/konnichiwatt/releases/latest/download/Konnichiwatt.exe)**
+· [versión portable (.zip)](https://github.com/Arnau977/konnichiwatt/releases/latest/download/Konnichiwatt-portable.zip)
 
-Un solo archivo, sin instalar nada (incluye .NET). Ponlo en una carpeta fija (por ejemplo
-`%LOCALAPPDATA%\Programs\Konnichiwatt`) y ábrelo. La primera vez Windows SmartScreen puede avisar porque el
-ejecutable no está firmado: *Más información → Ejecutar de todas formas*.
+**Instalador**: doble clic en el `.exe` descargado → *Instalar*. Se instala solo para tu usuario (sin permisos de
+administrador) en `%LOCALAPPDATA%\Programs\Konnichiwatt`, con acceso en el menú Inicio y entrada en
+*Configuración › Aplicaciones* para desinstalarlo. Después puedes borrar el archivo descargado. Abrir de nuevo un
+`.exe` más reciente actualiza la copia instalada.
 
-Se **actualiza solo**: comprueba nuevas versiones al minuto de arrancar y cada 12 h, verifica el SHA-256 y se
-reemplaza a sí mismo (se puede desactivar en *Ajustes › General*).
+**Portable**: descomprime el `.zip` donde quieras (también un USB). El archivo `portable.txt` junto al `.exe` hace
+que no se instale nada y que ajustes, historial y registros se guarden en la carpeta `data` de al lado.
+
+La primera vez Windows SmartScreen puede avisar porque el ejecutable no está firmado: *Más información → Ejecutar de
+todas formas*.
+
+Las dos versiones se **actualizan solas**: comprueban nuevas versiones al minuto de arrancar y cada 12 h, verifican
+el SHA-256 y se reemplazan a sí mismas (se puede desactivar en *Ajustes › General*).
 
 ## Publicar una versión
 
@@ -24,7 +32,7 @@ git tag v0.3.1; git push origin v0.3.1
 ```
 
 El workflow *Release* ejecuta los tests, compila el `.exe` con la dirección de actualizaciones y publica
-`Konnichiwatt.exe`, `update.json` y el `.zip` en GitHub Releases.
+`Konnichiwatt.exe`, `update.json` y `Konnichiwatt-portable.zip` en GitHub Releases.
 
 ## Dispositivos soportados
 
@@ -60,13 +68,13 @@ Un ratón Logitech que deja de responder (reposo) sigue mostrándose atenuado co
   - *Dispositivos*: renombrar, cambiar icono, ordenar, mostrar/ocultar, ocultar mientras cargan.
   - *Apariencia*: porcentaje / icono de batería / ambos, texto grueso, en qué pantallas aparece (con vista previa).
   - *Avisos*: batería baja (umbral ajustable), carga completa, aviso de prueba.
-  - *General*: iniciar con Windows, frecuencia de lectura, diagnóstico.
+  - *General*: iniciar con Windows, frecuencia de lectura, idioma, actualizaciones, diagnóstico, desinstalar.
 - Funciona también en la barra de tareas de monitores secundarios y en barras verticales (ExplorerPatcher / StartAllBack).
 
-Opciones de línea de comandos: `--settings` (abre los ajustes al iniciar), `--diag salida.txt`,
+Opciones de línea de comandos: `--settings` (abre los ajustes al iniciar), `--uninstall [--quiet]`, `--diag salida.txt`,
 `--preview estilos.png` (todos los estilos del widget), `--settings-shot carpeta` (capturas de la ventana de ajustes).
 
-Ajustes: `%APPDATA%\Konnichiwatt\settings.json` · Log: `%LOCALAPPDATA%\Konnichiwatt\konnichiwatt.log`
+Ajustes: `%APPDATA%\Konnichiwatt\settings.json` · Log: `%LOCALAPPDATA%\Konnichiwatt\konnichiwatt.log` (en modo portable, todo en `data\` junto al `.exe`)
 
 ## Compilar
 

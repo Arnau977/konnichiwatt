@@ -4,7 +4,7 @@ internal static class Log
 {
     private static readonly object Gate = new();
     public static readonly string Directory =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Konnichiwatt");
+        AppPaths.DataDirectory;
     private static readonly string FilePath = Path.Combine(Directory, "konnichiwatt.log");
 
     public static void Write(string message)

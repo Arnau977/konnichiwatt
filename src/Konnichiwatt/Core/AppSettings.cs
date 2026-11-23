@@ -107,7 +107,7 @@ public sealed class AppSettings
     }
 
     private static readonly string FilePath =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Konnichiwatt", "settings.json");
+        Path.Combine(AppPaths.SettingsDirectory, "settings.json");
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -199,11 +199,24 @@ internal static class Startup
             using var key = Registry.CurrentUser.OpenSubKey(RunKey);
             return key?.GetValue(ValueName) is string s && s.Contains(Environment.ProcessPath ?? "\0", StringComparison.OrdinalIgnoreCase);
         }
-        set
+        set => Set(value, Environment.ProcessPath!);
+    }
+
+    /// <summary>Turns "start with Windows" on for <paramref name="exe"/>, or off.</summary>
+    public static void Set(bool enabled, string exe)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
+        if (enabled) key.SetValue(ValueName, $"\"{exe}\"");
+        else key.DeleteValue(ValueName, false);
+    }
+
+    /// <summary>The program "start with Windows" currently launches, if any.</summary>
+    public static string? RegisteredExe
+    {
+        get
         {
-            using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-            if (value) key.SetValue(ValueName, $"\"{Environment.ProcessPath}\"");
-            else key.DeleteValue(ValueName, false);
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+            return key?.GetValue(ValueName) is string s ? s.Trim().Trim('"') : null;
         }
     }
 }

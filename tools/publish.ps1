@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Builds a release of Konnichiwatt: single-file .exe, update.json (version + SHA-256) and a .zip to share.
+  Builds a release of Konnichiwatt: single-file .exe (installs itself when opened), update.json (version +
+  SHA-256) and Konnichiwatt-portable.zip (same .exe + portable.txt).
 
 .EXAMPLE
   # Release whose copies update themselves from GitHub Releases of a public "releases" repo:
@@ -33,7 +34,14 @@ if ($BaseUrl) {
     [ordered]@{ version = $Version; url = "$BaseUrl/Konnichiwatt.exe"; sha256 = $sha; notes = $Notes } |
         ConvertTo-Json | Set-Content (Join-Path $Out "update.json") -Encoding utf8
 }
-Compress-Archive -Path $exe -DestinationPath (Join-Path $Out "Konnichiwatt.zip") -Force
+# Portable build: the same .exe plus the marker file that keeps everything in a "data" folder next to it.
+$staging = Join-Path $Out "portable"
+Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $staging | Out-Null
+Copy-Item $exe, (Join-Path $PSScriptRoot "portable.txt") $staging
+Remove-Item (Join-Path $Out "Konnichiwatt.zip") -ErrorAction SilentlyContinue
+Compress-Archive -Path (Join-Path $staging "*") -DestinationPath (Join-Path $Out "Konnichiwatt-portable.zip") -Force
+Remove-Item $staging -Recurse -Force
 
 "Konnichiwatt $Version"
 "  exe:      $exe"

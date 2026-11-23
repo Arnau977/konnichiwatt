@@ -302,10 +302,35 @@ internal sealed class FlatButton : FluentControl
         var g = e.Graphics;
         F.Prepare(g);
         var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+        using var f = F.Text(13);
+        if (Primary)
+        {
+            var fill = !Enabled ? Color.FromArgb(0x80, F.Accent) : Pressed ? ControlPaint.Dark(F.Accent, 0.05f)
+                     : Hover ? ControlPaint.Light(F.Accent, 0.15f) : F.Accent;
+            F.FillRound(g, fill, r, F.Pf(5));
+            F.DrawText(g, Text, f, F.OnAccent, r, StringAlignment.Center);
+            return;
+        }
         F.FillRound(g, Pressed ? F.CardHover : Hover ? F.ControlHover : F.ControlBack, r, F.Pf(5));
         F.StrokeRound(g, F.ControlStroke, r, F.Pf(5));
-        using var f = F.Text(13);
         F.DrawText(g, Text, f, Enabled ? F.Fg : F.Fg2, r, StringAlignment.Center);
+    }
+
+    public void PerformClick() { if (Enabled && Visible) OnClick(EventArgs.Empty); }
+
+    /// <summary>Accent-coloured "main action" button.</summary>
+    public bool Primary { get; set; }
+
+    /// <summary>Changes the text and resizes to fit, keeping the right edge in place.</summary>
+    public void SetText(string text, int minWidth = 0)
+    {
+        int right = Right;
+        Text = text;
+        using var g = CreateGraphics();
+        using var f = F.Text(13);
+        Width = Math.Max(minWidth, (int)F.Measure(g, text, f).Width + F.Px(28));
+        Left = right - Width;
+        Invalidate();
     }
 }
 

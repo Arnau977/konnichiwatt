@@ -156,4 +156,40 @@ internal static class L
     public static string UpdateAvailableBody(string v) => T($"Konnichiwatt {v} está lista. Haz clic aquí para instalarla.", $"Konnichiwatt {v} is ready. Click here to install it.");
     public static string UpdateFailedTitle => T("No se pudo actualizar", "Update failed");
     public static string UpdateFailedBody => T("Se volverá a intentar más tarde.", "It will be retried later.");
+    public static string Portable => T("portable", "portable");
+
+    // ---- Install / uninstall ------------------------------------------------------------
+    public static string SetupTitle => T("Instalar Konnichiwatt", "Install Konnichiwatt");
+    public static string SetupUpdateTitle => T("Actualizar Konnichiwatt", "Update Konnichiwatt");
+    public static string UninstallTitle => T("Desinstalar Konnichiwatt", "Uninstall Konnichiwatt");
+    public static string VersionN(string v) => T($"Versión {v}", $"Version {v}");
+    public static string SetupBody =>
+        T("La batería de tus auriculares, ratón y mandos, siempre a la vista en la barra de tareas.",
+          "The battery of your headset, mouse and controllers, always in sight on the taskbar.");
+    public static string SetupUpdateBody(string installed) =>
+        T($"Ya tienes instalada la versión {installed}. Se cerrará, se actualizará y volverá a abrirse con tus ajustes.",
+          $"Version {installed} is already installed. It will close, update and reopen with your settings.");
+    public static string StartWithWindowsSetupDesc => T("Aparece en la barra de tareas al encender el PC", "Shows up on the taskbar when the PC starts");
+    public static string SetupFootnote =>
+        T("Se instala solo para tu usuario, sin permisos de administrador, y se actualiza solo. Se puede desinstalar desde Configuración › Aplicaciones.",
+          "Installs just for you, without administrator rights, and keeps itself up to date. Uninstall it from Settings › Apps.");
+    public static string InstallButton => T("Instalar", "Install");
+    public static string UpdateButton => T("Actualizar", "Update");
+    public static string RunWithoutInstalling => T("Abrir sin instalar", "Run without installing");
+    public static string Installing => T("Instalando…", "Installing…");
+    public static string InstallFailed(string why) => T($"No se pudo instalar: {why}", $"Couldn't install: {why}");
+    public static string InstalledTitle => T("Konnichiwatt está instalado", "Konnichiwatt is installed");
+    public static string InstalledBody =>
+        T("Lo verás junto al reloj. Haz clic en el rayo de la bandeja para abrir los ajustes.",
+          "You'll find it next to the clock. Click the bolt in the tray to open the settings.");
+    public static string UninstallBody =>
+        T("Se cerrará y se quitará de la barra de tareas, del menú Inicio y del inicio de Windows.",
+          "It will close and be removed from the taskbar, the Start menu and Windows startup.");
+    public static string DeleteData => T("Borrar también ajustes e historial", "Also delete settings and history");
+    public static string DeleteDataDesc => T("Nombres, iconos, orden e historial de batería", "Names, icons, order and battery history");
+    public static string UninstallButton => T("Desinstalar", "Uninstall");
+    public static string Uninstalling => T("Desinstalando…", "Uninstalling…");
+    public static string UninstalledBody => T("Konnichiwatt se ha desinstalado.", "Konnichiwatt has been uninstalled.");
+    public static string Close => T("Cerrar", "Close");
+    public static string UninstallCardDesc => T("Quitar Konnichiwatt de este PC", "Remove Konnichiwatt from this PC");
 }

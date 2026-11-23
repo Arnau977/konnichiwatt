@@ -33,8 +33,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool _installing;
     /// <summary>State was already saved before swapping the executable; don't touch disk again while exiting.</summary>
     private bool _savedForUpdate;
+    /// <summary>Another launch of the app (open settings) or the installer (quit) talking to us.</summary>
+    private IDisposable? _instanceListener;
 
-    public TrayApplicationContext(bool openSettings = false, string? updatedFrom = null)
+    public TrayApplicationContext(bool openSettings = false, string? updatedFrom = null, bool justInstalled = false)
     {
         L.Init(_settings.Language);
         _lastThresholds = ThresholdsSignature();
@@ -97,7 +99,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         Log.Write($"Started {Updater.CurrentVersion.ToString(3)}");
         if (updatedFrom != null)
             Notify(L.UpdatedTitle, L.UpdatedBody(Updater.CurrentVersion.ToString(3)), ToolTipIcon.Info);
+        else if (justInstalled)
+            Notify(L.InstalledTitle, L.InstalledBody, ToolTipIcon.Info, OpenSettings);
         if (openSettings) OpenSettings();
+
+        try { _instanceListener = AppInstance.Listen(show: OpenSettings, quit: ExitThread); }
+        catch (Exception e) { Log.Error("Instance listener", e); }
     }
 
     // ---- Updates -----------------------------------------------------------------------
@@ -357,6 +364,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        _instanceListener?.Dispose();
+        _instanceListener = null;
         SystemEvents.UserPreferenceChanged -= OnThemeChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         _settingsWindow?.Close();
