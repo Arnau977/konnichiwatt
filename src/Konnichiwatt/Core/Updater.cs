@@ -1,0 +1,139 @@
+using System.Diagnostics;
+using System.Net.Http;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Konnichiwatt.Core;
+
+/// <summary>Contents of update.json, published next to the new .exe.</summary>
+public sealed record UpdateManifest(
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("sha256")] string Sha256,
+    [property: JsonPropertyName("notes")] string? Notes = null);
+
+/// <summary>
+/// Self-update for the single-file build. The manifest URL is baked in at publish time
+/// (<c>-p:UpdateManifestUrl=…</c>); without it, updates are disabled.
+/// Flow: read update.json → newer version? → download the .exe → verify SHA-256 → rename the running .exe to
+/// .old (Windows allows renaming a running file) → put the new one in its place → start it with --updated → exit.
+/// The new process deletes the .old file and announces the update.
+/// </summary>
+public sealed class Updater
+{
+    public static string? ManifestUrl { get; } = typeof(Updater).Assembly
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "UpdateManifestUrl")?.Value is { Length: > 0 } url ? url : null;
+
+    public static Version CurrentVersion { get; } = typeof(Updater).Assembly.GetName().Version ?? new Version(0, 0);
+
+    /// <summary>Updating replaces the .exe file, which only makes sense for the single-file published build.</summary>
+    public static bool CanSelfUpdate =>
+        ManifestUrl != null && string.IsNullOrEmpty(typeof(Updater).Assembly.Location) && Environment.ProcessPath != null;
+
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
+
+    public UpdateManifest? Available { get; private set; }
+    public DateTime? LastCheck { get; private set; }
+    public string? LastError { get; private set; }
+
+    /// <summary>Downloads and parses the manifest; sets <see cref="Available"/> if it's newer than this build.</summary>
+    public async Task<UpdateManifest?> CheckAsync(CancellationToken ct = default)
+    {
+        if (ManifestUrl == null) return null;
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
+            var json = await Http.GetStringAsync(ManifestUrl, cts.Token);
+            var m = JsonSerializer.Deserialize<UpdateManifest>(json);
+            LastCheck = DateTime.Now;
+            LastError = null;
+            Available = m != null && IsNewer(m.Version, CurrentVersion) && IsSafeUrl(m.Url) ? m : null;
+            return Available;
+        }
+        catch (Exception e)
+        {
+            LastError = e.Message;
+            Log.Error("Update check", e);
+            return null;
+        }
+    }
+
+    internal static bool IsNewer(string candidate, Version current) =>
+        Version.TryParse(candidate, out var v) && Normalize(v) > Normalize(current);
+
+    private static Version Normalize(Version v) => new(v.Major, Math.Max(0, v.Minor), Math.Max(0, v.Build), 0);
+
+    internal static bool IsSafeUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var u) &&
+        (u.Scheme == Uri.UriSchemeHttps || (u.Scheme == Uri.UriSchemeHttp && u.IsLoopback && TestMode));
+
+    /// <summary>
+    /// End-to-end test hook (KONNICHIWATT_UPDATE_TEST=1): allows plain HTTP from localhost and checks after 5 s
+    /// instead of 1 min. Has no effect on normal installs.
+    /// </summary>
+    public static bool TestMode => Environment.GetEnvironmentVariable("KONNICHIWATT_UPDATE_TEST") == "1";
+
+    /// <summary>
+    /// Downloads, verifies and swaps the executable, then starts the new one. Returns false (and leaves everything
+    /// as it was) if anything fails; on success the caller must exit the app.
+    /// </summary>
+    /// <param name="beforeSwap">
+    /// Runs right before the running .exe is renamed. Once renamed, a single-file app can no longer load code it
+    /// hasn't loaded yet (it lives inside that file), so anything to persist must be saved here.
+    /// </param>
+    public async Task<bool> InstallAsync(UpdateManifest m, Action? beforeSwap = null, CancellationToken ct = default)
+    {
+        if (!CanSelfUpdate) return false;
+        var exe = Environment.ProcessPath!;
+        var dir = Path.Combine(Log.Directory, "update");
+        var downloaded = Path.Combine(dir, "Konnichiwatt.new.exe");
+        var old = exe + ".old";
+        try
+        {
+            Directory.CreateDirectory(dir);
+            await using (var src = await Http.GetStreamAsync(m.Url, ct))
+            await using (var dst = File.Create(downloaded))
+                await src.CopyToAsync(dst, ct);
+
+            var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(downloaded)));
+            if (!hash.Equals(m.Sha256.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                LastError = "SHA-256 mismatch";
+                Log.Write($"Update {m.Version}: SHA-256 mismatch (got {hash}), discarded");
+                File.Delete(downloaded);
+                return false;
+            }
+
+            if (File.Exists(old)) File.Delete(old);
+            beforeSwap?.Invoke();
+            File.Move(exe, old);                 // allowed while running
+            try { File.Move(downloaded, exe); }
+            catch { File.Move(old, exe); throw; } // put the original back
+
+            Process.Start(new ProcessStartInfo(exe, $"--updated {CurrentVersion.ToString(3)}") { UseShellExecute = false });
+            Log.Write($"Updated {CurrentVersion.ToString(3)} -> {m.Version}");
+            return true;
+        }
+        catch (Exception e)
+        {
+            LastError = e.Message;
+            Log.Error("Update install", e);
+            return false;
+        }
+    }
+
+    /// <summary>Called by the new version: removes the previous executable once the old process has exited.</summary>
+    public static void CleanUpAfterUpdate()
+    {
+        var old = Environment.ProcessPath + ".old";
+        for (int i = 0; i < 20 && File.Exists(old); i++)
+        {
+            try { File.Delete(old); }
+            catch { Thread.Sleep(250); }
+        }
+    }
+}

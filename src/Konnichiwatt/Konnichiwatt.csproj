@@ -19,8 +19,15 @@
     <SatelliteResourceLanguages>es;en</SatelliteResourceLanguages>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Where the app looks for update.json. Empty = no self-update (dev builds). Set when publishing:
+         dotnet publish ... -p:UpdateManifestUrl=https://.../update.json -->
+    <UpdateManifestUrl Condition="'$(UpdateManifestUrl)' == ''"></UpdateManifestUrl>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Konnichiwatt.Tests" />
+    <AssemblyMetadata Include="UpdateManifestUrl" Value="$(UpdateManifestUrl)" />
   </ItemGroup>
 
   <ItemGroup>

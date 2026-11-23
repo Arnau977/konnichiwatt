@@ -145,4 +145,18 @@ internal static class L
 
     // ---- Updates ------------------------------------------------------------------------
     public static string Updates => T("Actualizaciones", "Updates");
+    public static string AutoUpdate => T("Actualizar automáticamente", "Update automatically");
+    public static string CheckNow => T("Buscar ahora", "Check now");
+    public static string Install(string v) => T($"Instalar {v}", $"Install {v}");
+    public static string Checking => T("Buscando…", "Checking…");
+    public static string UpToDate(string v) => T($"Tienes la última versión ({v})", $"You have the latest version ({v})");
+    public static string NewVersion(string v) => T($"Versión {v} disponible", $"Version {v} available");
+    public static string UpdatesNotConfigured => T("Esta copia no busca actualizaciones", "This copy doesn't check for updates");
+    public static string CheckFailed => T("No se pudo comprobar; se reintentará más tarde", "Couldn't check; will retry later");
+    public static string UpdatedTitle => T("Konnichiwatt actualizado", "Konnichiwatt updated");
+    public static string UpdatedBody(string v) => T($"Ahora tienes la versión {v}.", $"You now have version {v}.");
+    public static string UpdateAvailableTitle => T("Nueva versión disponible", "New version available");
+    public static string UpdateAvailableBody(string v) => T($"Konnichiwatt {v} está lista. Haz clic aquí para instalarla.", $"Konnichiwatt {v} is ready. Click here to install it.");
+    public static string UpdateFailedTitle => T("No se pudo actualizar", "Update failed");
+    public static string UpdateFailedBody => T("Se volverá a intentar más tarde.", "It will be retried later.");
 }

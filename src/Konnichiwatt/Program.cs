@@ -68,8 +68,16 @@ internal static class Program
             return;
         }
 
-        using var mutex = new Mutex(true, @"Local\Konnichiwatt.SingleInstance", out bool first);
-        if (!first) return;
+        // Started by the updater: the previous version is still shutting down and holds the single-instance lock.
+        int updated = Array.IndexOf(args, "--updated");
+        string? updatedFrom = updated >= 0 && updated + 1 < args.Length ? args[updated + 1] : null;
+
+        using var mutex = new Mutex(false, @"Local\Konnichiwatt.SingleInstance");
+        bool owned;
+        try { owned = mutex.WaitOne(updatedFrom != null ? TimeSpan.FromSeconds(20) : TimeSpan.Zero); }
+        catch (AbandonedMutexException) { owned = true; } // previous instance ended without releasing it
+        if (!owned) return;
+        if (updatedFrom != null) Updater.CleanUpAfterUpdate();
 
         AppSettings.MigrateFromOldName();
         Startup.MigrateFromOldName();
@@ -81,6 +89,13 @@ internal static class Program
 #pragma warning disable WFO5001 // dark context menus follow the Windows theme
         Application.SetColorMode(SystemColorMode.System);
 #pragma warning restore WFO5001
-        Application.Run(new TrayApplicationContext(openSettings: args.Contains("--settings")));
+        try
+        {
+            Application.Run(new TrayApplicationContext(openSettings: args.Contains("--settings"), updatedFrom: updatedFrom));
+        }
+        finally
+        {
+            mutex.ReleaseMutex(); // let an updated version start right away
+        }
     }
 }

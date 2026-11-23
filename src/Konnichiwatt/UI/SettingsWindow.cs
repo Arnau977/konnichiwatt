@@ -17,7 +17,10 @@ internal sealed class SettingsWindow : Form
         Action Changed,
         Action PollNow,
         Action Diagnostics,
-        Action TestNotification);
+        Action TestNotification,
+        Updater? Updater = null,
+        Func<Task>? CheckForUpdates = null,
+        Action? InstallUpdate = null);
 
     private static (string Glyph, string Title)[] Pages => new[]
     {
@@ -491,6 +494,8 @@ internal sealed class SettingsWindow : Form
         refresh.Click += (_, _) => _cb.PollNow();
         _content.Controls.Add(Card("", L.ReadNow, null, refresh));
 
+        AddUpdateCards();
+
         _content.Controls.Add(SectionLabel(L.Help));
         var diag = new FlatButton(L.GenerateReport);
         diag.Click += (_, _) => _cb.Diagnostics();
@@ -516,6 +521,53 @@ internal sealed class SettingsWindow : Form
             Font = F.Text(12),
             TextAlign = ContentAlignment.MiddleCenter,
         });
+    }
+
+    // ---- Updates ---------------------------------------------------------------------
+
+    private SettingCard? _updateCard;
+    private FlatButton? _updateButton;
+    private bool _checking;
+
+    private void AddUpdateCards()
+    {
+        _content.Controls.Add(SectionLabel(L.Updates));
+        var auto = new ToggleSwitch(_s.AutoUpdate) { Enabled = Updater.CanSelfUpdate };
+        auto.CheckedChanged += (_, _) => { _s.AutoUpdate = auto.Checked; Changed(); };
+        _content.Controls.Add(Card("", L.AutoUpdate, null, auto));
+
+        _updateButton = new FlatButton(L.CheckNow) { Enabled = Updater.CanSelfUpdate };
+        _updateButton.Click += async (_, _) =>
+        {
+            if (_cb.Updater?.Available != null) { _cb.InstallUpdate?.Invoke(); return; }
+            if (_cb.CheckForUpdates == null || _checking) return;
+            _checking = true;
+            UpdatesChanged();
+            try { await _cb.CheckForUpdates(); }
+            finally { _checking = false; UpdatesChanged(); }
+        };
+        _updateCard = Card("", $"Konnichiwatt {Updater.CurrentVersion.ToString(3)}", UpdateStatus(), _updateButton);
+        _content.Controls.Add(_updateCard);
+    }
+
+    private string UpdateStatus()
+    {
+        if (!Updater.CanSelfUpdate) return L.UpdatesNotConfigured;
+        if (_checking) return L.Checking;
+        var u = _cb.Updater;
+        if (u?.Available is { } m) return L.NewVersion(m.Version);
+        if (u?.LastError != null) return L.CheckFailed;
+        return u?.LastCheck != null ? L.UpToDate(Updater.CurrentVersion.ToString(3)) : "";
+    }
+
+    /// <summary>The updater checked / found something: refresh the card if it's on screen.</summary>
+    public void UpdatesChanged()
+    {
+        if (_page != 3 || IsDisposed || _updateCard == null || _updateButton == null) return;
+        _updateCard.Description = UpdateStatus();
+        var available = _cb.Updater?.Available;
+        _updateButton.Text = available != null ? L.Install(available.Version) : L.CheckNow;
+        _updateButton.Invalidate();
     }
 
     /// <summary>Fake estimates for the sample devices used by the demo / screenshots.</summary>

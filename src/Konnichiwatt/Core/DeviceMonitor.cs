@@ -40,6 +40,15 @@ public sealed class DeviceMonitor : IDisposable
 
     public void Start() => _thread.Start();
 
+    /// <summary>Persists the last readings now and skips doing it again on dispose (used right before self-update).</summary>
+    public void SaveStateNow()
+    {
+        _store.Save();
+        _stateSaved = true;
+    }
+
+    private bool _stateSaved;
+
     public void RequestPoll() => _wake.Set();
 
     /// <summary>Several hot-plug events usually arrive in bursts; wait for them to settle.</summary>
@@ -130,7 +139,7 @@ public sealed class DeviceMonitor : IDisposable
     {
         _stopping = true;
         _wake.Set();
-        _store.Save();
+        if (!_stateSaved) _store.Save();
         _debounce.Dispose();
         foreach (var p in _providers)
         {

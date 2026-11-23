@@ -9,6 +9,8 @@ public enum BatteryDisplay { Percent, Icon, IconAndPercent }
 
 public sealed class AppSettings
 {
+    /// <summary>Install new versions automatically (otherwise just notify).</summary>
+    public bool AutoUpdate { get; set; } = true;
     /// <summary>"auto" (follow Windows), "es" or "en".</summary>
     public string Language { get; set; } = "auto";
     public BatteryDisplay Display { get; set; } = BatteryDisplay.Percent;

@@ -26,8 +26,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private IntPtr _trayIconHandle;
     private string _lastThresholds = "";
     private readonly BatteryHistory _history = BatteryHistory.Load();
+    private readonly Updater _updater = new();
+    private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 60_000 }; // first check after 1 min
+    private Action? _balloonClick;
+    private string? _announcedVersion;
+    private bool _installing;
+    /// <summary>State was already saved before swapping the executable; don't touch disk again while exiting.</summary>
+    private bool _savedForUpdate;
 
-    public TrayApplicationContext(bool openSettings = false)
+    public TrayApplicationContext(bool openSettings = false, string? updatedFrom = null)
     {
         L.Init(_settings.Language);
         _lastThresholds = ThresholdsSignature();
@@ -73,9 +80,69 @@ internal sealed class TrayApplicationContext : ApplicationContext
         SystemEvents.UserPreferenceChanged += OnThemeChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
 
+        _tray.BalloonTipClicked += (_, _) => { var a = _balloonClick; _balloonClick = null; a?.Invoke(); };
+        _tray.BalloonTipClosed += (_, _) => _balloonClick = null;
+        if (Updater.CanSelfUpdate)
+        {
+            if (Updater.TestMode) _updateTimer.Interval = 5000;
+            _updateTimer.Tick += async (_, _) =>
+            {
+                _updateTimer.Interval = (int)TimeSpan.FromHours(12).TotalMilliseconds;
+                await CheckForUpdatesAsync(userInitiated: false);
+            };
+            _updateTimer.Start();
+        }
+
         _monitor.Start();
-        Log.Write("Started");
+        Log.Write($"Started {Updater.CurrentVersion.ToString(3)}");
+        if (updatedFrom != null)
+            Notify(L.UpdatedTitle, L.UpdatedBody(Updater.CurrentVersion.ToString(3)), ToolTipIcon.Info);
         if (openSettings) OpenSettings();
+    }
+
+    // ---- Updates -----------------------------------------------------------------------
+
+    private void Notify(string title, string body, ToolTipIcon icon, Action? onClick = null)
+    {
+        _balloonClick = onClick;
+        _tray.ShowBalloonTip(8000, title, body, icon);
+    }
+
+    /// <summary>Checks the manifest; installs automatically or offers it, depending on the setting.</summary>
+    private async Task CheckForUpdatesAsync(bool userInitiated)
+    {
+        var m = await _updater.CheckAsync();
+        _settingsWindow?.UpdatesChanged();
+        if (m == null) return;
+        if (_settings.AutoUpdate && !userInitiated) await InstallUpdateAsync(m);
+        else if (_announcedVersion != m.Version || userInitiated)
+        {
+            _announcedVersion = m.Version;
+            Notify(L.UpdateAvailableTitle, L.UpdateAvailableBody(m.Version), ToolTipIcon.Info, () => _ = InstallUpdateAsync(m));
+        }
+    }
+
+    private async Task InstallUpdateAsync(UpdateManifest m)
+    {
+        if (_installing) return;
+        _installing = true;
+        try
+        {
+            void SaveEverything()
+            {
+                _settings.Save();
+                _history.Save();
+                _monitor.SaveStateNow();
+            }
+            if (await _updater.InstallAsync(m, SaveEverything))
+            {
+                _savedForUpdate = true;
+                ExitThread(); // the new version is already starting
+                return;
+            }
+            Notify(L.UpdateFailedTitle, L.UpdateFailedBody, ToolTipIcon.Warning);
+        }
+        finally { _installing = false; }
     }
 
     private List<DeviceBattery> Customized => _settings.Arrange(_all);
@@ -159,10 +226,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settingsWindow = new SettingsWindow(_settings, new SettingsWindow.Callbacks(
             RawDevices: () => _all,
             Estimate: _history.EstimateText,
+            Updater: _updater,
+            CheckForUpdates: () => CheckForUpdatesAsync(userInitiated: true),
+            InstallUpdate: () => { if (_updater.Available is { } m) _ = InstallUpdateAsync(m); },
             Changed: OnSettingsChanged,
             PollNow: _monitor.RequestPoll,
             Diagnostics: RunDiagnostics,
-            TestNotification: () => _tray.ShowBalloonTip(5000, "Konnichiwatt 👋⚡",
+            TestNotification: () => Notify("Konnichiwatt 👋⚡",
                 L.TestNotificationBody, ToolTipIcon.Info)),
             AppIcon());
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
@@ -211,7 +281,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             int threshold = _settings.ThresholdFor(d.Id);
             bool low = p <= threshold && !d.IsCharging;
             if (low && _lowNotified.Add(d.Id) && _settings.LowBatteryNotifications)
-                _tray.ShowBalloonTip(8000, L.LowBatteryTitle, $"{d.Name}: {p}%", ToolTipIcon.Warning);
+                Notify(L.LowBatteryTitle, $"{d.Name}: {p}%", ToolTipIcon.Warning);
             else if (!low && (d.IsCharging || p > threshold + 5))
                 _lowNotified.Remove(d.Id);
         }
@@ -232,7 +302,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             else if (complete)
             {
                 if (_chargingIncomplete.Remove(d.Id) && _settings.ChargeCompleteNotifications)
-                    _tray.ShowBalloonTip(8000, L.ChargeCompleteTitle, L.ChargeCompleteBody(d.Name), ToolTipIcon.Info);
+                    Notify(L.ChargeCompleteTitle, L.ChargeCompleteBody(d.Name), ToolTipIcon.Info);
             }
             else
                 _chargingIncomplete.Remove(d.Id); // unplugged before finishing
@@ -290,8 +360,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         SystemEvents.UserPreferenceChanged -= OnThemeChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         _settingsWindow?.Close();
-        _history.Save();
+        if (!_savedForUpdate) _history.Save();
         _layoutTimer.Stop();
+        _updateTimer.Stop();
         _monitor.Dispose();
         _taskbars.Dispose();
         _popup.Dispose();
