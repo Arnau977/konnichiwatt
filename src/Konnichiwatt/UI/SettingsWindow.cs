@@ -54,14 +54,77 @@ internal sealed partial class SettingsWindow : Form
         _cb = callbacks;
         Text = L.SettingsTitle;
         if (icon != null) Icon = icon;
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true;
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
         Build();
+        RestoreSize();
+        FormClosing += (_, _) => RememberSize();
+    }
+
+    // ---- Size -----------------------------------------------------------------------
+
+    private static readonly Size MinClient = new(800, 560), DefaultClient = new(900, 640);
+    /// <summary>Widest a card gets; beyond that lines are too long to read comfortably (same as Windows Settings).</summary>
+    private const int MaxCardWidth = 1000;
+
+    private void RestoreSize()
+    {
+        ClientSize = new Size(F.Px(MinClient.Width), F.Px(MinClient.Height));
+        MinimumSize = Size;
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea.Size;
+        var frame = Size - ClientSize;
+        int Fit(int wanted, int min, int max) => Math.Max(F.Px(min), Math.Min(F.Px(Math.Max(wanted, min)), max));
+        ClientSize = new Size(
+            Fit(_s.WindowWidth ?? DefaultClient.Width, MinClient.Width, area.Width - frame.Width),
+            Fit(_s.WindowHeight ?? DefaultClient.Height, MinClient.Height, area.Height - frame.Height));
+        if (_s.WindowMaximized) WindowState = FormWindowState.Maximized;
+    }
+
+    private void RememberSize()
+    {
+        bool maximized = WindowState == FormWindowState.Maximized;
+        var size = (WindowState == FormWindowState.Normal ? Size : RestoreBounds.Size) - _frame;
+        int width = (int)Math.Round(size.Width / F.S), height = (int)Math.Round(size.Height / F.S);
+        bool isDefault = _s.WindowWidth == null && new Size(width, height) == DefaultClient;
+        if (maximized == _s.WindowMaximized && (isDefault || (width == _s.WindowWidth && height == _s.WindowHeight))) return;
+        _s.WindowMaximized = maximized;
+        (_s.WindowWidth, _s.WindowHeight) = (width, height);
+        _cb.Changed();
+    }
+
+    /// <summary>Title bar and borders, measured while the window is in its normal state.</summary>
+    private Size _frame;
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (WindowState == FormWindowState.Normal) _frame = Size - ClientSize;
+    }
+
+    /// <summary>
+    /// Scrolling column of cards that follow the width of the window; each one lays out its own contents. They are
+    /// resized before the layout, so cards still too wide never bring up a horizontal scroll bar.
+    /// </summary>
+    private sealed class CardList : FlowLayoutPanel
+    {
+        private bool _fitting;
+
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            if (!_fitting && CardWidthIn(Width) is var width && width > 0)
+            {
+                _fitting = true;
+                SuspendLayout();
+                foreach (Control c in Controls)
+                    if (c.Width != width) c.Width = width;
+                ResumeLayout(false);
+                _fitting = false;
+            }
+            base.OnLayout(e);
+        }
     }
 
     // ---- Construction ---------------------------------------------------------------
@@ -77,7 +140,6 @@ internal sealed partial class SettingsWindow : Form
 
         F.Init(Theme.IsLightApps(), DeviceDpi / 96f);
         BackColor = F.Back;
-        ClientSize = new Size(F.Px(800), F.Px(560));
 
         // Side bar: app name + navigation.
         var side = new Panel { Dock = DockStyle.Left, Width = F.Px(220), BackColor = F.Back, Padding = new Padding(F.Px(12)) };
@@ -118,7 +180,7 @@ internal sealed partial class SettingsWindow : Form
             Font = F.Text(26, semibold: true),
             TextAlign = ContentAlignment.MiddleLeft,
         };
-        _content = new FlowLayoutPanel
+        _content = new CardList
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
@@ -167,7 +229,10 @@ internal sealed partial class SettingsWindow : Form
     /// Card width, always leaving room for the vertical scroll bar: long pages get one, and if the cards were
     /// sized for the full width they would overflow and bring up a horizontal scroll bar too.
     /// </summary>
-    private int CardWidth => _content.ClientSize.Width - (_content.VerticalScroll.Visible ? 0 : SystemInformation.VerticalScrollBarWidth) - F.Px(8);
+    private int CardWidth => CardWidthIn(_content.Width);
+
+    private static int CardWidthIn(int available) =>
+        Math.Min(F.Px(MaxCardWidth), available - SystemInformation.VerticalScrollBarWidth - F.Px(8));
 
     public void ShowPage(int index)
     {
@@ -453,22 +518,36 @@ internal sealed partial class SettingsWindow : Form
 
     private void BuildAlerts()
     {
-        var threshold = new Slider(5, 50, 5, _s.LowBatteryThreshold, v => $"{v} %");
-        threshold.ValueChanged += (_, _) => { _s.LowBatteryThreshold = threshold.Value; Changed(); };
-        threshold.Enabled = _s.LowBatteryNotifications;
+        _content.Controls.Add(SectionLabel(L.LowBatterySection));
+        AddSwitchWithSlider(_s.LowBatteryNotifications, v => _s.LowBatteryNotifications = v, "\uE850", L.LowBatteryAlert, L.LowBatteryAlertDesc,
+            new Slider(5, 50, 5, _s.LowBatteryThreshold, v => $"{v} %"), v => _s.LowBatteryThreshold = v, "\uE851", L.AlertWhenBelow, L.AlertWhenBelowDesc);
+        AddSwitchWithSlider(_s.CriticalNotifications, v => _s.CriticalNotifications = v, "\uE7BA", L.CriticalAlert, L.CriticalAlertDesc,
+            new Slider(2, 15, 1, _s.CriticalThreshold, v => $"{v} %"), v => _s.CriticalThreshold = v, "\uE851", L.CriticalBelow, L.CriticalBelowDesc);
+        _content.Controls.Add(Card("\uE823", L.PredictiveAlert, L.PredictiveAlertDesc,
+            Toggle(_s.PredictiveNotifications, v => _s.PredictiveNotifications = v)));
 
-        var low = new ToggleSwitch(_s.LowBatteryNotifications);
-        low.CheckedChanged += (_, _) => { _s.LowBatteryNotifications = low.Checked; threshold.Enabled = low.Checked; Changed(); };
-
-        _content.Controls.Add(Card("", L.LowBatteryAlert, L.LowBatteryAlertDesc, low));
-        _content.Controls.Add(Card("", L.AlertWhenBelow, L.AlertWhenBelowDesc, threshold));
-        _content.Controls.Add(Card("", L.FullChargeAlert, L.FullChargeAlertDesc,
+        _content.Controls.Add(SectionLabel(L.ChargeSection));
+        _content.Controls.Add(Card("\uE83E", L.FullChargeAlert, L.FullChargeAlertDesc,
             Toggle(_s.ChargeCompleteNotifications, v => _s.ChargeCompleteNotifications = v)));
+        AddSwitchWithSlider(_s.ChargeLimitNotifications, v => _s.ChargeLimitNotifications = v, "\uE83E", L.ChargeLimitAlert, L.ChargeLimitAlertDesc,
+            new Slider(50, 95, 5, _s.ChargeLimit, v => $"{v} %"), v => _s.ChargeLimit = v, "\uE859", L.ChargeLimitAt, L.ChargeLimitAtDesc);
 
         var test = new FlatButton(L.SendTest);
         test.Click += (_, _) => _cb.TestNotification();
         _content.Controls.Add(SectionLabel(L.Check));
         _content.Controls.Add(Card("", L.TestNotifications, L.TestNotificationsDesc, test));
+    }
+
+    /// <summary>A switch card followed by the slider it enables.</summary>
+    private void AddSwitchWithSlider(bool on, Action<bool> setOn, string glyph, string title, string description,
+                                     Slider slider, Action<int> setValue, string sliderGlyph, string sliderTitle, string sliderDescription)
+    {
+        slider.Enabled = on;
+        slider.ValueChanged += (_, _) => { setValue(slider.Value); Changed(); };
+        var toggle = new ToggleSwitch(on);
+        toggle.CheckedChanged += (_, _) => { setOn(toggle.Checked); slider.Enabled = toggle.Checked; Changed(); };
+        _content.Controls.Add(Card(glyph, title, description, toggle));
+        _content.Controls.Add(Card(sliderGlyph, sliderTitle, sliderDescription, slider));
     }
 
     private void BuildGeneral()
@@ -599,7 +678,8 @@ internal sealed partial class SettingsWindow : Form
     };
 
     /// <summary>Dev aid (<c>--settings-shot dir</c>): renders every page with sample devices to PNG files.</summary>
-    public static void SaveScreenshots(string dir, AppSettings settings)
+    /// <param name="width">Client width in 96-dpi pixels; texts that don't fit are listed in cut.txt.</param>
+    public static void SaveScreenshots(string dir, AppSettings settings, int? width = null)
     {
         Directory.CreateDirectory(dir);
         var samples = PreviewRenderer.Samples();
@@ -610,13 +690,15 @@ internal sealed partial class SettingsWindow : Form
             ShowInTaskbar = false,
         };
         w.Show();
-        w.ClientSize = new Size(w.ClientSize.Width, F.Px(760)); // tall enough to see whole pages without scrolling
+        w.ClientSize = new Size(width is int px ? F.Px(px) : w.ClientSize.Width, F.Px(760)); // tall enough to see whole pages without scrolling
         for (int i = 0; i < Pages.Length; i++)
         {
             w.ShowPage(i);
             Application.DoEvents();
             using var bmp = new Bitmap(w.ClientSize.Width, w.ClientSize.Height);
             w.DrawToBitmap(bmp, new Rectangle(Point.Empty, w.ClientSize));
+            foreach (var card in w._content.Controls.Cast<Control>().SelectMany(c => c is DeviceListPanel ? c.Controls.Cast<Control>() : new[] { c }).OfType<SettingCard>())
+                foreach (var text in card.CutTexts) File.AppendAllText(Path.Combine(dir, "cut.txt"), $"{Pages[i].Title}: {text}\n");
             bmp.Save(Path.Combine(dir, $"ajustes-{i + 1}-{Pages[i].Title.ToLowerInvariant()}.png"));
         }
         w.Close();
@@ -638,6 +720,7 @@ internal sealed class DeviceRow : SettingCard
     private readonly GlyphButton _icon;
     private readonly TextBox _name;
     private readonly GlyphButton _more;
+    private readonly ToolTip _nameTip;
     private readonly ToggleSwitch _shown;
     private string _subtitle = "";
     private string _percent = "";
@@ -693,6 +776,14 @@ internal sealed class DeviceRow : SettingCard
         _name.Leave += (_, _) => Commit();
         _name.GotFocus += (_, _) => Invalidate();
         _name.LostFocus += (_, _) => Invalidate();
+
+        _nameTip = CutTextTip.Create();
+        Disposed += (_, _) => _nameTip.Dispose();
+        _name.MouseEnter += (_, _) =>
+        {
+            using var nf = F.Text(14);
+            _nameTip.SetToolTip(_name, F.IsCut(_name.Text, nf, _name.Width) ? _name.Text : "");
+        };
 
         _more = new GlyphButton("", 30, 14) { Visible = connected };
         _more.Click += (_, _) => OptionsRequested?.Invoke(_more);
@@ -790,7 +881,9 @@ internal sealed class DeviceRow : SettingCard
         base.OnPaint(e);
         var g = e.Graphics;
         using var sub = F.Text(12);
-        F.DrawText(g, _subtitle, sub, F.Fg2, new RectangleF(TextLeft, F.Pf(38), _name.Width, F.Pf(18)));
+        var subtitle = new RectangleF(TextLeft, F.Pf(38), _name.Width, F.Pf(18));
+        F.DrawText(g, _subtitle, sub, F.Fg2, subtitle);
+        Tip.Check(_subtitle, sub, subtitle);
         if (_name.Focused)
         {
             using var pen = new Pen(F.Accent, F.Pf(2));

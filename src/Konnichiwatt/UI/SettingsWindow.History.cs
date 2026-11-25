@@ -28,7 +28,7 @@ internal sealed partial class SettingsWindow
             return;
         }
         foreach (var d in devices)
-            _content.Controls.Add(new HistoryChartCard(d, history!.For(d.Id), from, now, CardWidth));
+            _content.Controls.Add(new HistoryChartCard(d, history!.For(d.Id), DailyLog.Months(history.Daily.For(d.Id)), from, now, CardWidth));
     }
 
     /// <summary>
@@ -56,6 +56,7 @@ internal sealed partial class SettingsWindow
             }
             h.Replace(d.Id, BatteryHistory.Thin(list, now));
         }
+        h.UpdateDaily(now);
         return h;
     }
 
@@ -93,6 +94,7 @@ internal sealed class NoteText : Control
     {
         Text = text;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.ResizeRedraw, true);
         BackColor = F.Back;
         Size = new Size(width, F.Px(48));
         Margin = new Padding(0, F.Px(8), 0, F.Px(4));
@@ -121,9 +123,19 @@ internal sealed class NotesCard : Panel
         DoubleBuffered = true;
         BackColor = F.Back;
         Margin = new Padding(0, 0, 0, F.Px(4));
+        ResizeRedraw = true;
         Width = width;
+        FitHeight();
+    }
+
+    protected override void OnResize(EventArgs e) { base.OnResize(e); FitHeight(); }
+
+    private void FitHeight()
+    {
+        if (_lines == null || Width <= TextLeft + F.Pf(40)) return;
         using var g = CreateGraphics();
-        Height = (int)Math.Ceiling(Measure(g, draw: false));
+        int h = (int)Math.Ceiling(Measure(g, draw: false));
+        if (Height != h) Height = h;
     }
 
     private float TextLeft => F.Pf(54);
@@ -173,8 +185,11 @@ internal sealed class HistoryChartCard : Panel
     private readonly List<BatterySample> _samples;
     private readonly DateTime _from, _to;
     private readonly BatteryHistory.Stats _stats;
+    private readonly IReadOnlyList<MonthLife> _months;
+    private readonly CutTextTip _tip;
 
-    public HistoryChartCard(DeviceBattery device, IReadOnlyList<BatterySample> samples, DateTime from, DateTime to, int width)
+    public HistoryChartCard(DeviceBattery device, IReadOnlyList<BatterySample> samples, IReadOnlyList<MonthLife> months,
+                            DateTime from, DateTime to, int width)
     {
         _device = device;
         _from = from;
@@ -183,10 +198,13 @@ internal sealed class HistoryChartCard : Panel
         var before = samples.LastOrDefault(s => s.Time < from);
         _samples = (before != null ? new[] { before } : Array.Empty<BatterySample>()).Concat(samples.Where(s => s.Time >= from)).ToList();
         _stats = BatteryHistory.Analyze(samples, from);
+        _months = months;
+        _tip = new CutTextTip(this);
         DoubleBuffered = true;
+        ResizeRedraw = true;
         BackColor = F.Back;
         Margin = new Padding(0, 0, 0, F.Px(4));
-        Size = new Size(width, F.Px(250));
+        Size = new Size(width, F.Px(272));
     }
 
     private static CultureInfo Culture => CultureInfo.GetCultureInfo(L.Language == "es" ? "es-ES" : "en-US");
@@ -202,8 +220,13 @@ internal sealed class HistoryChartCard : Panel
         // Header: icon, name, current level.
         using (var gf = F.Glyphs(16))
             F.DrawText(g, Theme.Glyph(_device.Kind), gf, F.Fg, new RectangleF(F.Pf(18), F.Pf(12), F.Pf(20), F.Pf(24)));
+        _tip.Clear();
         using (var nf = F.Text(14, semibold: true))
-            F.DrawText(g, _device.Name, nf, F.Fg, new RectangleF(F.Pf(54), F.Pf(12), Width - F.Pf(160), F.Pf(24)));
+        {
+            var name = new RectangleF(F.Pf(54), F.Pf(12), Width - F.Pf(160), F.Pf(24));
+            F.DrawText(g, _device.Name, nf, F.Fg, name);
+            _tip.Check(_device.Name, nf, name);
+        }
         using (var pf = F.Text(14))
             F.DrawText(g, Theme.PercentText(_device, true), pf, F.Fg2, new RectangleF(Width - F.Pf(118), F.Pf(12), F.Pf(100), F.Pf(24)), StringAlignment.Far);
 
@@ -218,16 +241,36 @@ internal sealed class HistoryChartCard : Panel
         var life = _stats.PerCharge is TimeSpan t
             ? L.BatteryLifeValue(BatteryHistory.Amount(t), _stats.Discharges)
             : L.NotEnoughData;
-        var label = L.BatteryLife + ":  ";
-        float lw = g.MeasureString(label, sfb).Width;
-        F.DrawText(g, label, sfb, F.Fg, new RectangleF(F.Pf(54), y, lw, F.Pf(20)));
-        F.DrawText(g, life, sf, F.Fg2, new RectangleF(F.Pf(54) + lw, y, w - lw, F.Pf(20)));
+        void Line(string title, string value, float top)
+        {
+            var label = title + ":  ";
+            float lw = g.MeasureString(label, sfb).Width;
+            F.DrawText(g, label, sfb, F.Fg, new RectangleF(F.Pf(54), top, lw, F.Pf(20)));
+            var box = new RectangleF(F.Pf(54) + lw, top, w - lw, F.Pf(20));
+            F.DrawText(g, value, sf, F.Fg2, box);
+            _tip.Check(value, sf, box);
+        }
+        Line(L.BatteryLife, life, y);
+        Line(L.LifeByMonth, MonthsText(_months, Culture), y + F.Pf(20));
 
         var parts = new List<string>();
         if (_stats.Charges > 0) parts.Add(L.ChargesCount(_stats.Charges));
         if (_stats.LastCharge is DateTime last) parts.Add(L.LastFullCharge(last.ToString("d MMM HH:mm", Culture)));
         if (parts.Count > 0)
-            F.DrawText(g, string.Join("  ·  ", parts), sf, F.Fg2, new RectangleF(F.Pf(54), y + F.Pf(20), w, F.Pf(20)));
+            F.DrawText(g, string.Join("  ·  ", parts), sf, F.Fg2, new RectangleF(F.Pf(54), y + F.Pf(40), w, F.Pf(20)));
+    }
+
+    /// <summary>"sep ≈ 110 h · oct ≈ 108 h · nov ≈ 104 h  (−5 %)": the last months, and the change since the first of them.</summary>
+    internal static string MonthsText(IReadOnlyList<MonthLife> months, CultureInfo culture)
+    {
+        var shown = months.TakeLast(4).ToList();
+        if (shown.Count < 2) return L.LifeByMonthNotYet;
+        // Hours for longer than usual: "4 days" every month would hide the difference.
+        string Amount(TimeSpan t) => t.TotalHours < 240 ? L.Hours(Math.Round(t.TotalHours)) : L.Days(Math.Round(t.TotalDays));
+        double change = Math.Round((shown[^1].PerCharge / shown[0].PerCharge - 1) * 100);
+        var sign = change > 0 ? "+" : change < 0 ? "−" : "±";
+        return string.Join("  ·  ", shown.Select(m => $"{m.Month.ToString("MMM", culture)} ≈ {Amount(m.PerCharge)}")) +
+               $"  ({sign}{Math.Abs(change)} %)";
     }
 
     private float X(RectangleF plot, DateTime t) =>

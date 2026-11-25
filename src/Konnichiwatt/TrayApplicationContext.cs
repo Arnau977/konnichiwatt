@@ -16,16 +16,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ContextMenuStrip _menu = new();
     private readonly System.Windows.Forms.Timer _layoutTimer = new() { Interval = 1000 };
     private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 350 };
-    private readonly HashSet<string> _lowNotified = new();
-    private readonly HashSet<string> _chargingIncomplete = new();
     private IReadOnlyList<DeviceBattery> _all = Array.Empty<DeviceBattery>();
     private TaskbarWidget? _hovered;
     /// <summary>Set by a right click: no hover flyout until the mouse leaves the widget.</summary>
     private bool _suppressPopup;
     private SettingsWindow? _settingsWindow;
     private IntPtr _trayIconHandle;
-    private string _lastThresholds = "";
     private readonly BatteryHistory _history = BatteryHistory.Load();
+    private readonly AlertEngine _alerts;
     private readonly Updater _updater = new();
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 60_000 }; // first check after 1 min
     private Action? _balloonClick;
@@ -40,7 +38,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                                   string? rolledBack = null)
     {
         L.Init(_settings.Language);
-        _lastThresholds = ThresholdsSignature();
+        _alerts = new AlertEngine(_settings, _history);
         _popup.IsLow = _settings.IsLow;
         _popup.History = _history;
         _monitor = new DeviceMonitor(Program.CreateProviders(), TimeSpan.FromSeconds(_settings.PollSeconds));
@@ -182,18 +180,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// <summary>What the taskbar widget (and its flyout) shows: visible devices, minus those discreet mode hides.</summary>
     private List<DeviceBattery> OnTaskbar => Visible.Where(_settings.ShowsOnTaskbar).ToList();
 
-    private string ThresholdsSignature() =>
-        _settings.LowBatteryThreshold + ";" + string.Join(";", _settings.Customizations
-            .Where(kv => kv.Value.LowThreshold != null).OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value.LowThreshold}"));
-
     private void OnUpdated(IReadOnlyList<DeviceBattery> devices)
     {
         _all = devices;
         _history.Record(devices, DateTime.Now);
         Republish();
-        var customized = Customized;
-        CheckLowBattery(customized.Where(d => !_settings.HiddenDevices.Contains(d.Id)));
-        CheckChargeComplete(customized);
+        foreach (var alert in _alerts.Check(Customized)) Notify(alert);
     }
 
     /// <summary>Pushes the current list to every view (after a poll or a settings change).</summary>
@@ -234,12 +226,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settings.PruneCustomizations();
         _settings.Save();
         _monitor.Interval = TimeSpan.FromSeconds(_settings.PollSeconds);
-        var thresholds = ThresholdsSignature();
-        if (thresholds != _lastThresholds)
-        {
-            _lastThresholds = thresholds;
-            _lowNotified.Clear(); // re-evaluate alerts with the new thresholds
-        }
         _taskbars.SetDevices(OnTaskbar);
         _taskbars.Refresh(force: true);
         if (_popup.Visible) ShowPopup();
@@ -313,39 +299,27 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     // ---- Notifications ---------------------------------------------------------------
 
-    private void CheckLowBattery(IEnumerable<DeviceBattery> devices)
+    private void Notify(Alert a)
     {
-        foreach (var d in devices)
+        var d = a.Device;
+        switch (a.Kind)
         {
-            if (d.Percent is not int p || d.Stale) continue;
-            int threshold = _settings.ThresholdFor(d.Id);
-            bool low = p <= threshold && !d.IsCharging;
-            if (low && _lowNotified.Add(d.Id) && _settings.LowBatteryNotifications)
-                Notify(L.LowBatteryTitle, $"{d.Name}: {p}%", ToolTipIcon.Warning);
-            else if (!low && (d.IsCharging || p > threshold + 5))
-                _lowNotified.Remove(d.Id);
-        }
-    }
-
-    /// <summary>
-    /// Notifies once when a device we saw charging (below 100 %) reaches full charge. A device that is already
-    /// full when the app starts is not announced.
-    /// </summary>
-    private void CheckChargeComplete(IEnumerable<DeviceBattery> devices)
-    {
-        foreach (var d in devices)
-        {
-            if (d.Stale) continue;
-            bool complete = d.State == ChargeState.Full || (d.IsCharging && d.Percent >= 100);
-            if (d.IsCharging && !complete)
-                _chargingIncomplete.Add(d.Id);
-            else if (complete)
-            {
-                if (_chargingIncomplete.Remove(d.Id) && _settings.ChargeCompleteNotifications)
-                    Notify(L.ChargeCompleteTitle, L.ChargeCompleteBody(d.Name), ToolTipIcon.Info);
-            }
-            else
-                _chargingIncomplete.Remove(d.Id); // unplugged before finishing
+            case AlertKind.Low:
+                Notify(L.LowBatteryTitle, $"{d.Name}: {d.Percent}%", ToolTipIcon.Warning);
+                break;
+            case AlertKind.Critical:
+                Notify(L.CriticalTitle, $"{d.Name}: {d.Percent}%", ToolTipIcon.Warning);
+                break;
+            case AlertKind.WontLast:
+                Notify(L.WontLastTitle, L.WontLastBody(d.Name, d.Percent ?? 0,
+                    BatteryHistory.Amount(a.Left ?? TimeSpan.Zero), BatteryHistory.Amount(a.Daily ?? TimeSpan.Zero)), ToolTipIcon.Info);
+                break;
+            case AlertKind.ChargeLimit:
+                Notify(L.ChargeLimitTitle(d.Percent ?? 0), L.ChargeLimitBody(d.Name), ToolTipIcon.Info);
+                break;
+            case AlertKind.ChargeComplete:
+                Notify(L.ChargeCompleteTitle, L.ChargeCompleteBody(d.Name), ToolTipIcon.Info);
+                break;
         }
     }
 

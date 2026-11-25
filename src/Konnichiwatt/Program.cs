@@ -65,7 +65,7 @@ internal static class Program
         {
             if (args.Length > 2) L.Init(args[2]); // optional language: es / en
             ApplicationConfiguration.Initialize();
-            UI.SettingsWindow.SaveScreenshots(args[1], new AppSettings());
+            UI.SettingsWindow.SaveScreenshots(args[1], new AppSettings(), args.Length > 3 && int.TryParse(args[3], out int w) ? w : null);
             return;
         }
 

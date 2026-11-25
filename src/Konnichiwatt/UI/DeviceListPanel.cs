@@ -54,6 +54,12 @@ internal sealed class DeviceListPanel : Panel
         UpdateArrows();
     }
 
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        foreach (var r in _rows) r.Width = Width;
+    }
+
     public IReadOnlyList<string> Ids => _rows.Select(r => r.Id).ToList();
 
     // ---- Dragging ---------------------------------------------------------------------

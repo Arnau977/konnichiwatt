@@ -21,8 +21,11 @@ internal sealed class ReadingFilter
     private readonly Dictionary<string, int> _accepted = new();
     private readonly Dictionary<string, Pending> _pending = new();
 
-    public ReadingFilter(IEnumerable<DeviceBattery> lastKnown)
+    private readonly Action<string>? _log;
+
+    public ReadingFilter(IEnumerable<DeviceBattery> lastKnown, Action<string>? log = null)
     {
+        _log = log;
         foreach (var d in lastKnown)
             if (d.Percent is int p) _accepted[d.Id] = p;
     }
@@ -49,7 +52,7 @@ internal sealed class ReadingFilter
 
         if (now - held.Since >= Confirm || now - held.HeldSince >= MaxHold) return Accept(d, p);
 
-        if (held.Since == now) Log.Write($"Unconfirmed reading: {d.Name} {last}% -> {p}%");
+        if (held.Since == now) _log?.Invoke($"Unconfirmed reading: {d.Name} {last}% -> {p}%");
         _pending[d.Id] = held;
         return d with { Percent = last, Stale = true, Verifying = true };
     }

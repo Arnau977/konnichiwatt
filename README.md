@@ -69,14 +69,14 @@ Un ratón Logitech que deja de responder (reposo) sigue mostrándose atenuado co
 - **Clic izquierdo en el widget** → refrescar ahora. **Clic derecho** → menú rápido (baterías, actualizar, ajustes, salir).
 - **Clic en el icono de la bandeja** → ventana de **Ajustes**:
   - *Dispositivos*: renombrar, cambiar icono, ordenar, mostrar/ocultar, ocultar mientras cargan.
-  - *Historial*: gráfica de 2, 7 o 30 días por dispositivo y autonomía media por carga.
+  - *Historial*: gráfica de 2, 7 o 30 días por dispositivo, autonomía media por carga y comparación mes a mes.
   - *Apariencia*: porcentaje / icono de batería / ambos, texto grueso, en qué pantallas aparece (con vista previa).
-  - *Avisos*: batería baja (umbral ajustable), carga completa, aviso de prueba.
+  - *Avisos*: batería baja (umbral ajustable), carga completa, aviso de prueba y, desactivados de serie, batería crítica, "no aguanta otro día" y desenchufar al 80 %.
   - *General*: iniciar con Windows, frecuencia de lectura, idioma, actualizaciones (y beta), novedades, diagnóstico, "¿Falta algún dispositivo?" (informe + formulario en GitHub), desinstalar.
 - Funciona también en la barra de tareas de monitores secundarios y en barras verticales (ExplorerPatcher / StartAllBack).
 
 Opciones de línea de comandos: `--settings` (abre los ajustes al iniciar), `--install --silent [--no-startup]`, `--uninstall [--quiet]`, `--diag salida.txt`,
-`--preview estilos.png` (todos los estilos del widget), `--settings-shot carpeta` (capturas de la ventana de ajustes).
+`--preview estilos.png` (todos los estilos del widget), `--settings-shot carpeta` (capturas de la ventana de ajustes; opcionales, idioma y ancho).
 
 Ajustes: `%APPDATA%\Konnichiwatt\settings.json` · Log: `%LOCALAPPDATA%\Konnichiwatt\konnichiwatt.log` (en modo portable, todo en `data\` junto al `.exe`)
 

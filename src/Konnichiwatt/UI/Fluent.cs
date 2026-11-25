@@ -86,6 +86,101 @@ internal static class F
     }
 
     public static SizeF Measure(Graphics g, string s, Font f) => g.MeasureString(s, f);
+
+    private static readonly Graphics Measurer = CreateMeasurer();
+
+    private static Graphics CreateMeasurer()
+    {
+        var g = Graphics.FromImage(new Bitmap(1, 1));
+        Prepare(g);
+        return g;
+    }
+
+    private static StringFormat WrapFormat() => new()
+    {
+        LineAlignment = StringAlignment.Center,
+        Trimming = StringTrimming.EllipsisCharacter,
+    };
+
+    /// <summary>Height of a word-wrapped text, up to <paramref name="maxLines"/> lines.</summary>
+    public static int WrappedHeight(string s, Font f, float width, int maxLines = int.MaxValue)
+    {
+        using var fmt = WrapFormat();
+        float h = Measurer.MeasureString(s, f, new SizeF(width, 100_000), fmt).Height;
+        return (int)Math.Ceiling(maxLines == int.MaxValue ? h : Math.Min(h, f.GetHeight(Measurer) * maxLines + 1));
+    }
+
+    /// <summary>Draws word-wrapped text vertically centred in <paramref name="box"/>; ellipsis if it doesn't fit.</summary>
+    public static void DrawWrapped(Graphics g, string s, Font f, Color c, RectangleF box)
+    {
+        using var b = new SolidBrush(c);
+        using var fmt = WrapFormat();
+        g.DrawString(s, f, b, box, fmt);
+    }
+
+    /// <summary>Whether <see cref="DrawText"/> has to cut the text to fit this width.</summary>
+    public static bool IsCut(string s, Font f, float width)
+    {
+        using var fmt = new StringFormat(StringFormatFlags.NoWrap);
+        return Measurer.MeasureString(s, f, PointF.Empty, fmt).Width > width + 0.5f;
+    }
+}
+
+/// <summary>
+/// Shows the whole text of hand-drawn labels that didn't fit, while the mouse is over them. The control reports what
+/// it cut on every paint.
+/// </summary>
+internal sealed class CutTextTip : IDisposable
+{
+    private readonly Control _owner;
+    private readonly List<(RectangleF Box, string Text)> _cut = new();
+    private ToolTip? _tip;
+    private string _shown = "";
+
+    public CutTextTip(Control owner)
+    {
+        _owner = owner;
+        owner.MouseMove += (_, e) => Show(_cut.FirstOrDefault(c => c.Box.Contains(e.Location)).Text ?? "");
+        owner.MouseLeave += (_, _) => Show("");
+        owner.Disposed += (_, _) => Dispose();
+    }
+
+    /// <summary>Texts currently cut (for tests and screenshots).</summary>
+    public IEnumerable<string> Texts => _cut.Select(c => c.Text);
+
+    /// <summary>What's being shown right now; empty if nothing.</summary>
+    public string Current => _shown;
+
+    public void Clear() => _cut.Clear();
+
+    /// <summary>Call with the same text, font and box as <see cref="F.DrawText"/>.</summary>
+    public void Check(string text, Font font, RectangleF box)
+    {
+        if (F.IsCut(text, font, box.Width)) _cut.Add((box, text));
+    }
+
+    public void Add(string text, RectangleF box) => _cut.Add((box, text));
+
+    private void Show(string text)
+    {
+        if (text == _shown) return;
+        _shown = text;
+        (_tip ??= Create()).SetToolTip(_owner, text);
+    }
+
+    /// <summary>Tooltip in the window's colours (the standard one stays light on the dark theme).</summary>
+    public static ToolTip Create()
+    {
+        var tip = new ToolTip { OwnerDraw = true, BackColor = F.Card, ForeColor = F.Fg, AutoPopDelay = 20_000, InitialDelay = 400, ReshowDelay = 100 };
+        tip.Draw += (_, e) => { e.DrawBackground(); e.DrawBorder(); e.DrawText(); };
+        return tip;
+    }
+
+    public void Dispose()
+    {
+        _tip?.Dispose();
+        _tip = null;
+    }
 }
 
 /// <summary>Base for hand-drawn controls: double-buffered, transparent background, hover tracking.</summary>
@@ -367,6 +462,8 @@ internal class SettingCard : Panel
     private readonly string _title;
     private string? _description;
     private readonly Control? _accessory;
+    private const int MaxDescriptionLines = 3;
+    protected readonly CutTextTip Tip;
 
     public SettingCard(string? glyph, string title, string? description, Control? accessory, int width)
     {
@@ -376,19 +473,44 @@ internal class SettingCard : Panel
         _accessory = accessory;
         DoubleBuffered = true;
         BackColor = F.Back;
+        ResizeRedraw = true;
+        Tip = new CutTextTip(this);
         Margin = new Padding(0, 0, 0, F.Px(4));
         Size = new Size(width, F.Px(description == null ? 58 : 70));
         if (accessory != null) Controls.Add(accessory);
         LayoutAccessory();
+        FitHeight();
+    }
+
+    /// <summary>Texts that don't fit even so (shown on hover).</summary>
+    internal IEnumerable<string> CutTexts => Tip.Texts;
+    internal string HoverText => Tip.Current;
+
+    private float TextLeft => F.Pf(_glyph != null ? 54 : 18);
+
+    /// <summary>Grows the card so a long description wraps instead of being cut.</summary>
+    private void FitHeight()
+    {
+        if (_description == null) return;
+        float w = TextRight - TextLeft;
+        if (w <= 0) return;
+        using var df = F.Text(12);
+        int h = Math.Max(F.Px(70), F.Px(52) + F.WrappedHeight(_description, df, w, MaxDescriptionLines));
+        if (Height != h) Height = h;
     }
 
     public string? Description
     {
         get => _description;
-        set { _description = value; Invalidate(); }
+        set { _description = value; FitHeight(); Invalidate(); }
     }
 
-    protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutAccessory(); }
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        FitHeight();
+        LayoutAccessory();
+    }
 
     private void LayoutAccessory()
     {
@@ -409,23 +531,30 @@ internal class SettingCard : Panel
         F.FillRound(g, CardFill, r, F.Pf(6));
         F.StrokeRound(g, CardBorder, r, CardBorderWidth);
 
-        float x = F.Pf(18);
+        Tip.Clear();
+        float x = TextLeft;
         if (_glyph != null)
         {
             using var gf = F.Glyphs(16);
-            F.DrawText(g, _glyph, gf, F.Fg, new RectangleF(x, 0, F.Pf(20), Height));
-            x += F.Pf(36);
+            F.DrawText(g, _glyph, gf, F.Fg, new RectangleF(F.Pf(18), 0, F.Pf(20), Height));
         }
         using var tf = F.Text(14);
         using var df = F.Text(12);
         float w = TextRight - x;
+        if (w <= 0) return;
         if (_description == null)
-            F.DrawText(g, _title, tf, F.Fg, new RectangleF(x, 0, w, Height));
-        else
         {
-            F.DrawText(g, _title, tf, F.Fg, new RectangleF(x, Height / 2f - F.Pf(19), w, F.Pf(20)));
-            F.DrawText(g, _description, df, F.Fg2, new RectangleF(x, Height / 2f + F.Pf(1), w, F.Pf(18)));
+            F.DrawText(g, _title, tf, F.Fg, new RectangleF(x, 0, w, Height));
+            Tip.Check(_title, tf, new RectangleF(x, 0, w, Height));
+            return;
         }
+        float dh = Math.Max(F.Pf(18), F.WrappedHeight(_description, df, w, MaxDescriptionLines));
+        var title = new RectangleF(x, (Height - F.Pf(20) - dh) / 2f, w, F.Pf(20));
+        var description = new RectangleF(x, title.Bottom, w, dh + 1);
+        F.DrawText(g, _title, tf, F.Fg, title);
+        F.DrawWrapped(g, _description, df, F.Fg2, description);
+        Tip.Check(_title, tf, title);
+        if (F.WrappedHeight(_description, df, w) > dh + 1) Tip.Add(_description, description);
     }
 }
 

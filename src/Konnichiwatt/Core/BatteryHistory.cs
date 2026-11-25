@@ -23,6 +23,9 @@ public sealed class BatteryHistory
     private DateTime _savedAt = DateTime.Now;
     private bool _dirty;
 
+    /// <summary>Long-term daily summary, fed from these samples.</summary>
+    public DailyLog Daily { get; private set; } = new();
+
     /// <summary>Sets a device's whole history (demo data and tests).</summary>
     internal void Replace(string id, List<BatterySample> samples) => _samples[id] = samples;
 
@@ -40,6 +43,8 @@ public sealed class BatteryHistory
                     h._samples[id] = Thin(RemoveSpikes(list.OrderBy(s => s.Time).ToList()), DateTime.Now);
         }
         catch (Exception e) { Log.Error("Load history", e); SafeFile.KeepCorrupt(FilePath); }
+        h.Daily = DailyLog.Load();
+        h.UpdateDaily(DateTime.Now);
         return h;
     }
 
@@ -106,6 +111,8 @@ public sealed class BatteryHistory
         try
         {
             var now = DateTime.Now;
+            UpdateDaily(now);
+            Daily.Save();
             foreach (var id in _samples.Keys.ToList()) _samples[id] = Thin(_samples[id], now);
             Directory.CreateDirectory(Log.Directory);
             SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(_samples));
@@ -218,6 +225,22 @@ public sealed class BatteryHistory
         TimeSpan? perCharge = drop >= 10 && hours > 0 ? TimeSpan.FromHours(100 / (drop / hours)) : null;
         return new Stats(perCharge, perCharge == null ? 0 : Math.Max(1, discharges), charges, lastCharge);
     }
+
+    internal void UpdateDaily(DateTime now)
+    {
+        foreach (var (id, list) in _samples) Daily.Update(id, list, DateOnly.FromDateTime(now));
+    }
+
+    /// <summary>Time left on battery, or null if it's charging or there isn't enough data.</summary>
+    public TimeSpan? TimeLeft(string id)
+    {
+        var samples = For(id);
+        var t = Estimate(samples, out bool toFull, Analyze(samples, DateTime.MinValue).PerCharge);
+        return toFull ? null : t;
+    }
+
+    /// <summary>How long the device is usually on battery in a day.</summary>
+    public TimeSpan? TypicalDailyUse(string id) => DailyLog.TypicalUse(Daily.For(id), DateOnly.FromDateTime(DateTime.Now));
 
     /// <summary>"≈ 6 h restantes" / "lleno en ≈ 40 min", or null.</summary>
     public string? EstimateText(string id)

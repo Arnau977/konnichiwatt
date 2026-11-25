@@ -114,6 +114,28 @@ internal static class L
     public static string AlertWhenBelowDesc => T("General; cada dispositivo puede tener el suyo (⋯)", "Devices can override it (⋯)");
     public static string FullChargeAlert => T("Aviso de carga completa", "Full charge alert");
     public static string FullChargeAlertDesc => T("Cuando un dispositivo que estaba cargando llega al 100 %", "When a charging device reaches 100 %");
+    public static string LowBatterySection => T("Batería baja", "Low battery");
+    public static string ChargeSection => T("Carga", "Charging");
+    public static string CriticalAlert => T("Aviso de batería crítica", "Critical battery alert");
+    public static string CriticalAlertDesc => T("Un segundo aviso cuando está a punto de apagarse", "A second alert when it's about to run out");
+    public static string CriticalBelow => T("Crítica al bajar del", "Critical below");
+    public static string CriticalBelowDesc => T("Para todos los dispositivos", "For every device");
+    public static string PredictiveAlert => T("Aviso si no aguanta otro día", "Alert if it won't last another day");
+    public static string PredictiveAlertDesc => T("Cuando le queda menos tiempo del que sueles usarlo al día; necesita un par de días de historial", "When there's less time left than you usually use it in a day; needs a couple of days of history");
+    public static string ChargeLimitAlert => T("Aviso para desenchufar", "Unplug alert");
+    public static string ChargeLimitAlertDesc => T("Cargar sin llegar al 100 % alarga la vida de la batería", "Not charging all the way to 100 % makes the battery last longer");
+    public static string ChargeLimitAt => T("Desenchufar al llegar al", "Unplug at");
+    public static string ChargeLimitAtDesc => T("Para todos los dispositivos", "For every device");
+    public static string CriticalTitle => T("Batería crítica", "Critical battery");
+    public static string WontLastTitle => T("Puede que no aguante otro día", "It may not last another day");
+    public static string WontLastBody(string name, int percent, string left, string daily) =>
+        T($"{name}: {percent} %, ≈ {left} restantes. Sueles usarlo unas {daily} al día.",
+          $"{name}: {percent} %, ≈ {left} left. You usually use it about {daily} a day.");
+    public static string ChargeLimitTitle(int percent) => T($"Carga al {percent} %", $"Charged to {percent} %");
+    public static string ChargeLimitBody(string name) =>
+        T($"{name}: ya puedes desenchufarlo para cuidar la batería.", $"{name}: you can unplug it now to look after the battery.");
+    public static string LifeByMonth => T("Autonomía por mes", "Battery life by month");
+    public static string LifeByMonthNotYet => T("Se podrá comparar cuando haya dos meses con datos", "Can be compared once there are two months of data");
     public static string SendTest => T("Enviar aviso de prueba", "Send a test alert");
     public static string Check => T("Comprobar", "Check");
     public static string TestNotifications => T("Probar las notificaciones", "Test notifications");

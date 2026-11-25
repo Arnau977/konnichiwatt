@@ -3,6 +3,12 @@
 Una línea por cambio: `- texto en español // English text`. La app muestra la sección de su versión tras
 actualizarse, y el workflow *Release* la copia a `update.json` y a la página de la release.
 
+## 0.5.0
+- La ventana de ajustes se puede agrandar y maximizar, y recuerda su tamaño // The settings window can be resized and maximized, and remembers its size
+- Las descripciones largas pasan a otra línea y, si algo no cabe, se ve entero al pasar el ratón // Long descriptions wrap, and anything that still doesn't fit shows in full on hover
+- Nuevos avisos opcionales, desactivados de serie: batería crítica, si no aguanta otro día y para desenchufar al 80 % // New optional alerts, off by default: critical battery, won't last another day, and unplug at 80 %
+- El historial guarda un resumen diario para comparar la autonomía mes a mes // The history keeps a daily summary to compare battery life month by month
+
 ## 0.4.2
 - Autonomía por carga más fiable en dispositivos con lectura aproximada // More reliable battery life per charge on devices with approximate readings
 - El tiempo restante aparece mucho antes, a partir de lo aprendido en cargas anteriores // Time left shows up much sooner, based on what was learned from earlier charges

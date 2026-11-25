@@ -31,7 +31,7 @@ public sealed class DeviceMonitor : IDisposable
         _providers = providers.ToArray();
         _ui = SynchronizationContext.Current ?? new SynchronizationContext();
         Interval = interval;
-        _filter = new ReadingFilter(_store.All);
+        _filter = new ReadingFilter(_store.All, Log.Write);
         _debounce = new System.Threading.Timer(_ => _wake.Set());
         foreach (var p in _providers) p.DevicesChanged += RequestPollSoon;
         foreach (var r in _providers.OfType<IRestorable>())

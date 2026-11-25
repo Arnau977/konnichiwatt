@@ -28,6 +28,18 @@ public sealed class AppSettings
     public bool ShowTaskbarWidget { get; set; } = true;
     public List<string> HiddenDevices { get; set; } = new();
     public bool ChargeCompleteNotifications { get; set; } = true;
+    /// <summary>Second, last-minute alert (off unless asked for, like the ones below).</summary>
+    public bool CriticalNotifications { get; set; }
+    public int CriticalThreshold { get; set; } = 5;
+    /// <summary>Alert when the time left is shorter than a usual day of use.</summary>
+    public bool PredictiveNotifications { get; set; }
+    /// <summary>Alert when a charge reaches <see cref="ChargeLimit"/> %, to unplug it and look after the battery.</summary>
+    public bool ChargeLimitNotifications { get; set; }
+    public int ChargeLimit { get; set; } = 80;
+    /// <summary>Size of the settings window in 96-dpi pixels; null = default.</summary>
+    public int? WindowWidth { get; set; }
+    public int? WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
     /// <summary>Discreet mode: the taskbar only shows devices at or below <see cref="DiscreetBelow"/> %.</summary>
     public bool DiscreetMode { get; set; } = false;
     public int DiscreetBelow { get; set; } = 30;
