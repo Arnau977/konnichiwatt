@@ -231,7 +231,7 @@ public class SettingsLayoutTests
                 var widths = content.Controls.Cast<Control>().Select(c => c.Width).Distinct().ToList();
                 Assert.Single(widths);
                 Assert.True(widths[0] <= F.Px(1000) && widths[0] <= content.ClientSize.Width);
-                if (w.ClientSize.Width >= F.Px(1400)) Assert.Equal(F.Px(1000), widths[0]);
+                if (content.Width >= F.Px(1100)) Assert.Equal(F.Px(1000), widths[0]);
                 foreach (var list in content.Controls.OfType<DeviceListPanel>())
                     Assert.All(list.Controls.Cast<Control>(), r => Assert.Equal(list.Width, r.Width));
             }
