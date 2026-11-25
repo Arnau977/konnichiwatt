@@ -307,7 +307,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var tip = visible.Count == 0
             ? $"Konnichiwatt\n{L.NoDevicesDetected}"
-            : string.Join("\n", visible.Select(d => $"{d.Name}: {Theme.PercentText(d, true)}{(d.IsCharging ? " ⚡" : "")}{(d.Stale ? $" ({L.AsleepShort})" : "")}"));
+            : string.Join("\n", visible.Select(d => $"{d.Name}: {Theme.PercentText(d, true)}{(d.IsCharging ? " ⚡" : "")}{(d.Stale && !d.Verifying ? $" ({L.AsleepShort})" : "")}"));
         _tray.Text = tip.Length > 127 ? tip[..127] : tip;
     }
 

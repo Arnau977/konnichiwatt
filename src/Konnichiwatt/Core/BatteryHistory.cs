@@ -37,9 +37,9 @@ public sealed class BatteryHistory
             if (File.Exists(FilePath) &&
                 JsonSerializer.Deserialize<Dictionary<string, List<BatterySample>>>(File.ReadAllText(FilePath)) is { } data)
                 foreach (var (id, list) in data)
-                    h._samples[id] = Thin(list.OrderBy(s => s.Time).ToList(), DateTime.Now);
+                    h._samples[id] = Thin(RemoveSpikes(list.OrderBy(s => s.Time).ToList()), DateTime.Now);
         }
-        catch (Exception e) { Log.Error("Load history", e); }
+        catch (Exception e) { Log.Error("Load history", e); SafeFile.KeepCorrupt(FilePath); }
         return h;
     }
 
@@ -75,6 +75,32 @@ public sealed class BatteryHistory
         return result;
     }
 
+    /// <summary>
+    /// Drops single wrong readings recorded before <see cref="ReadingFilter"/> existed: a jump that is undone within
+    /// five minutes, none of it while charging.
+    /// </summary>
+    internal static List<BatterySample> RemoveSpikes(List<BatterySample> list)
+    {
+        var result = new List<BatterySample>(list.Count);
+        for (int i = 0; i < list.Count; i++)
+        {
+            var s = list[i];
+            if (result.Count > 0 && i + 1 < list.Count)
+            {
+                var prev = result[^1];
+                var next = list[i + 1];
+                int up = s.Percent - prev.Percent, back = s.Percent - next.Percent;
+                if (!prev.Charging && !s.Charging && !next.Charging &&
+                    Math.Abs(up) > ReadingFilter.MaxJump && Math.Abs(back) > ReadingFilter.MaxJump && up > 0 == back > 0 &&
+                    Math.Abs(next.Percent - prev.Percent) <= ReadingFilter.MaxJump &&
+                    next.Time - s.Time <= TimeSpan.FromMinutes(5))
+                    continue;
+            }
+            result.Add(s);
+        }
+        return result;
+    }
+
     public void Save()
     {
         try
@@ -82,7 +108,7 @@ public sealed class BatteryHistory
             var now = DateTime.Now;
             foreach (var id in _samples.Keys.ToList()) _samples[id] = Thin(_samples[id], now);
             Directory.CreateDirectory(Log.Directory);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(_samples));
+            SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(_samples));
             _savedAt = DateTime.Now;
             _dirty = false;
         }
@@ -92,23 +118,45 @@ public sealed class BatteryHistory
     /// <summary>
     /// Time until empty (discharging) or full (charging), from a least-squares fit over the current run — the
     /// trailing samples with the same charging state, without gaps longer than 2 h (e.g. PC switched off).
-    /// Null when there isn't enough data: under 30 min of run, or less than 3 points of change.
+    /// A run under 30 min or with less than 3 points of change isn't enough by itself; then, while discharging, the
+    /// battery life learned from earlier discharges (<paramref name="perCharge"/>) is used. A short run is blended with
+    /// it, so the estimate moves smoothly from what's usual to what's happening now. Null without either.
     /// </summary>
-    public static TimeSpan? Estimate(IReadOnlyList<BatterySample> samples, out bool toFull)
+    public static TimeSpan? Estimate(IReadOnlyList<BatterySample> samples, out bool toFull, TimeSpan? perCharge = null)
     {
         toFull = false;
-        if (samples.Count < 2) return null;
+        if (samples.Count == 0) return null;
         var last = samples[^1];
         toFull = last.Charging;
         if (toFull ? last.Percent >= 100 : last.Percent <= 0) return null;
 
+        double? run = RunRate(samples, out int change);
+        if (toFull) return run is double up ? Within((100 - last.Percent) / up, 14) : null;
+
+        double? learned = perCharge is TimeSpan life && life > TimeSpan.Zero ? 100 / life.TotalHours : null;
+        double weight = Math.Min(1, change / 15.0);
+        if (run is double r && learned is double l) return Within(last.Percent / (weight * r + (1 - weight) * l), 90);
+        if (run is double only) return Within(last.Percent / only, 14);
+        return learned is double usual ? Within(last.Percent / usual, 90) : null;
+
+        static TimeSpan? Within(double hours, int days) =>
+            hours >= 0 && hours <= 24 * days ? TimeSpan.FromHours(hours) : null;
+    }
+
+    /// <summary>Speed of the current run in % per hour (positive, draining or charging), or null if it's too short to tell.</summary>
+    /// <param name="change">Points gained or lost over the run.</param>
+    private static double? RunRate(IReadOnlyList<BatterySample> samples, out int change)
+    {
+        change = 0;
+        var last = samples[^1];
         int start = samples.Count - 1;
         while (start > 0 && samples[start - 1].Charging == last.Charging &&
                samples[start].Time - samples[start - 1].Time < TimeSpan.FromHours(2))
             start--;
         var run = samples.Skip(start).ToList();
         if (run.Count < 2 || last.Time - run[0].Time < TimeSpan.FromMinutes(30)) return null;
-        if (Math.Abs(run[0].Percent - last.Percent) < 3) return null;
+        change = Math.Abs(run[0].Percent - last.Percent);
+        if (change < 3) return null;
 
         // Least squares: percent = a + b·hours.
         double t0 = run[0].Time.Ticks;
@@ -119,23 +167,21 @@ public sealed class BatteryHistory
         if (sxx <= 0) return null;
         double slope = xs.Zip(ys, (x, y) => (x - mx) * (y - my)).Sum() / sxx; // % per hour
 
-        double hours = toFull
-            ? (slope > 0.1 ? (100 - last.Percent) / slope : double.NaN)
-            : (slope < -0.1 ? last.Percent / -slope : double.NaN);
-        if (double.IsNaN(hours) || hours < 0 || hours > 24 * 14) return null;
-        return TimeSpan.FromHours(hours);
+        double speed = last.Charging ? slope : -slope;
+        return speed > 0.1 ? speed : null;
     }
 
     /// <summary>Summary of a period for the History page.</summary>
     /// <param name="PerCharge">Battery life of a full 0→100 % charge at the observed drain rate.</param>
-    /// <param name="Discharges">Discharges that went into <paramref name="PerCharge"/> (each at least 10 %).</param>
+    /// <param name="Discharges">Discharges that went into <paramref name="PerCharge"/> (those of at least 3 %).</param>
     /// <param name="Charges">Times it started charging.</param>
     /// <param name="LastCharge">End of the most recent charge.</param>
     public sealed record Stats(TimeSpan? PerCharge, int Discharges, int Charges, DateTime? LastCharge);
 
     /// <summary>
     /// Battery life per charge from every discharge since <paramref name="from"/>: total % used / total hours, only over
-    /// stretches without gaps over 2 h (PC off), so time when the level wasn't seen doesn't count.
+    /// stretches without gaps over 2 h (PC off), so time when the level wasn't seen doesn't count. The % used is net:
+    /// approximate levels wobble up and down, and adding only the drops would count that as drain. Needs 10 % in total.
     /// </summary>
     public static Stats Analyze(IReadOnlyList<BatterySample> samples, DateTime from)
     {
@@ -147,7 +193,9 @@ public sealed class BatteryHistory
 
         void EndRun()
         {
-            if (runDrop >= 10) { drop += runDrop; hours += runHours; discharges++; }
+            drop += runDrop;
+            hours += runHours;
+            if (runDrop >= 3) discharges++;
             runDrop = runHours = 0;
         }
 
@@ -162,19 +210,20 @@ public sealed class BatteryHistory
             var gap = cur.Time - prev.Time;
             if (gap > TimeSpan.FromHours(2)) continue;           // not observed: neither time nor drop counts
             if (cur.Percent > prev.Percent + 5) { EndRun(); continue; } // charged while we weren't looking
-            runDrop += Math.Max(0, prev.Percent - cur.Percent);
+            runDrop += prev.Percent - cur.Percent;
             runHours += gap.TotalHours;
         }
         EndRun();
 
-        TimeSpan? perCharge = drop > 0 && hours > 0 ? TimeSpan.FromHours(100 / (drop / hours)) : null;
-        return new Stats(perCharge, discharges, charges, lastCharge);
+        TimeSpan? perCharge = drop >= 10 && hours > 0 ? TimeSpan.FromHours(100 / (drop / hours)) : null;
+        return new Stats(perCharge, perCharge == null ? 0 : Math.Max(1, discharges), charges, lastCharge);
     }
 
     /// <summary>"≈ 6 h restantes" / "lleno en ≈ 40 min", or null.</summary>
     public string? EstimateText(string id)
     {
-        var t = Estimate(For(id), out bool toFull);
+        var samples = For(id);
+        var t = Estimate(samples, out bool toFull, Analyze(samples, DateTime.MinValue).PerCharge);
         if (t is not TimeSpan span) return null;
         return toFull ? L.FullIn(Amount(span)) : L.TimeLeft(Amount(span));
     }

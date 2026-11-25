@@ -107,7 +107,7 @@ de la estimación de batería y la lógica de ajustes (orden, umbrales por dispo
 
 Windows 11 eliminó las "deskbands", así que el widget es una ventana *layered* (alpha por píxel) hija de
 `Shell_TrayWnd`, colocada a la izquierda de `TrayNotifyWnd` y reposicionada cada segundo
-(cambios de ancho de la bandeja, DPI, reinicio de Explorer). Solo barra de tareas horizontal.
+(cambios de ancho de la bandeja, DPI, reinicio de Explorer). En barras verticales los elementos se apilan en columna.
 
 ## Añadir un dispositivo
 

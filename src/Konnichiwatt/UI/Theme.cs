@@ -137,6 +137,7 @@ internal static class Theme
 
     public static string StateText(DeviceBattery d)
     {
+        if (d.Verifying) return L.Verifying;
         if (d.Stale)
         {
             var ago = DateTime.Now - (d.LastSeen ?? DateTime.Now);

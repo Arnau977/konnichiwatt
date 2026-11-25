@@ -16,7 +16,11 @@ public sealed class DeviceMonitor : IDisposable
     private readonly System.Threading.Timer _debounce;
     private readonly object _pollLock = new();
     private readonly ReadingStore _store = ReadingStore.Load();
+    private readonly ReadingFilter _filter;
     private volatile bool _stopping;
+
+    /// <summary>Polling while a reading is waiting to be confirmed, if the normal interval is longer.</summary>
+    private static readonly TimeSpan VerifyInterval = TimeSpan.FromSeconds(30);
 
     public TimeSpan Interval { get; set; }
     public IReadOnlyList<DeviceBattery> Current { get; private set; } = Array.Empty<DeviceBattery>();
@@ -27,6 +31,7 @@ public sealed class DeviceMonitor : IDisposable
         _providers = providers.ToArray();
         _ui = SynchronizationContext.Current ?? new SynchronizationContext();
         Interval = interval;
+        _filter = new ReadingFilter(_store.All);
         _debounce = new System.Threading.Timer(_ => _wake.Set());
         foreach (var p in _providers) p.DevicesChanged += RequestPollSoon;
         foreach (var r in _providers.OfType<IRestorable>())
@@ -58,11 +63,13 @@ public sealed class DeviceMonitor : IDisposable
     {
         while (!_stopping)
         {
-            var list = PollAll(null);
+            var list = _filter.Apply(PollAll(null), DateTime.Now);
             Current = list;
             _store.Update(list);
             _ui.Post(_ => { if (!_stopping) Updated?.Invoke(list); }, null);
-            _wake.WaitOne(Interval);
+            var wait = Interval;
+            if (wait > VerifyInterval && _filter.HasPending(DateTime.Now)) wait = VerifyInterval;
+            _wake.WaitOne(wait);
         }
     }
 

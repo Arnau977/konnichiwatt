@@ -28,7 +28,7 @@ public sealed class ReadingStore
                     if (d.LastSeen is DateTime seen && DateTime.Now - seen < MaxAge)
                         store._readings[d.Id] = d with { Stale = false };
         }
-        catch (Exception e) { Log.Error("Load last readings", e); }
+        catch (Exception e) { Log.Error("Load last readings", e); SafeFile.KeepCorrupt(FilePath); }
         return store;
     }
 
@@ -50,7 +50,7 @@ public sealed class ReadingStore
         {
             Directory.CreateDirectory(Log.Directory);
             var keep = _readings.Values.Where(d => DateTime.Now - (d.LastSeen ?? DateTime.MinValue) < MaxAge).ToList();
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(keep, Json));
+            SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(keep, Json));
             _savedAt = DateTime.Now;
             _dirty = false;
         }

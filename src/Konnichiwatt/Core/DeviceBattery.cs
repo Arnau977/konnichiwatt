@@ -12,6 +12,7 @@ public enum ChargeState { Unknown, Discharging, Charging, Full }
 /// <param name="Percent">0-100, or null if the device does not report a level.</param>
 /// <param name="Approximate">The device only reports coarse steps (e.g. Switch controllers).</param>
 /// <param name="Stale">Device stopped answering (probably asleep); this is the last known value.</param>
+/// <param name="Verifying">A sudden jump is waiting to be confirmed (see <see cref="ReadingFilter"/>); always Stale too.</param>
 public sealed record DeviceBattery(
     string Id,
     string Name,
@@ -21,7 +22,8 @@ public sealed record DeviceBattery(
     string Source,
     bool Approximate = false,
     bool Stale = false,
-    DateTime? LastSeen = null)
+    DateTime? LastSeen = null,
+    bool Verifying = false)
 {
     public bool IsCharging => State is ChargeState.Charging or ChargeState.Full;
 }

@@ -150,7 +150,7 @@ public sealed class AppSettings
             if (File.Exists(FilePath))
                 return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
         }
-        catch (Exception e) { Log.Error("Load settings", e); }
+        catch (Exception e) { Log.Error("Load settings", e); SafeFile.KeepCorrupt(FilePath); }
         // First run: this version's changes aren't news to someone who has never used an earlier one.
         return new AppSettings { NotesSeenVersion = Updater.CurrentVersion.ToString(3) };
     }
@@ -160,7 +160,7 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, Json));
+            SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(this, Json));
         }
         catch (Exception e) { Log.Error("Save settings", e); }
     }

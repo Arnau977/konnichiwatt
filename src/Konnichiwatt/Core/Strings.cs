@@ -56,6 +56,7 @@ internal static class L
     public static string Minutes(int n) => $"{n} min";
     public static string Hours(double n) => $"{n} h";
     public static string Days(double n) => T($"{n} días", $"{n} days");
+    public static string Verifying => T("Comprobando la lectura…", "Checking the reading…");
     public static string TimeLeft(string amount) => T($"≈ {amount} restantes", $"≈ {amount} left");
     public static string FullIn(string amount) => T($"lleno en ≈ {amount}", $"full in ≈ {amount}");
     public static string ScreenN(int n) => T($"Pantalla {n}", $"Display {n}");
@@ -199,8 +200,8 @@ internal static class L
     public static string Days30 => T("30 días", "30 days");
     public static string BatteryLife => T("Autonomía por carga", "Battery life per charge");
     public static string BatteryLifeValue(string amount, int n) =>
-        T($"≈ {amount} (media de {n} descargas)", $"≈ {amount} (average of {n} discharges)");
-    public static string NotEnoughData => T("Faltan datos: hace falta una descarga de al menos 10 %", "Not enough data: needs a discharge of at least 10 %");
+        T($"≈ {amount} (media de {n} {(n == 1 ? "descarga" : "descargas")})", $"≈ {amount} (average of {n} {(n == 1 ? "discharge" : "discharges")})");
+    public static string NotEnoughData => T("Faltan datos: hace falta ver bajar al menos un 10 %", "Not enough data: needs to see a drop of at least 10 %");
     public static string ChargesCount(int n) => T(n == 1 ? "1 carga" : $"{n} cargas", n == 1 ? "1 charge" : $"{n} charges");
     public static string LastFullCharge(string when) => T($"Última carga: {when}", $"Last charge: {when}");
     public static string UpdateFailedTitle => T("No se pudo actualizar", "Update failed");

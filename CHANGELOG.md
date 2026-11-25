@@ -3,6 +3,12 @@
 Una línea por cambio: `- texto en español // English text`. La app muestra la sección de su versión tras
 actualizarse, y el workflow *Release* la copia a `update.json` y a la página de la release.
 
+## 0.4.2
+- Autonomía por carga más fiable en dispositivos con lectura aproximada // More reliable battery life per charge on devices with approximate readings
+- El tiempo restante aparece mucho antes, a partir de lo aprendido en cargas anteriores // Time left shows up much sooner, based on what was learned from earlier charges
+- Las lecturas falsas al encender un dispositivo ya no llegan a los avisos ni al historial // Wrong readings when a device wakes up no longer reach alerts or history
+- Los ajustes y el historial ya no se pierden si el PC se apaga mientras se guardan // Settings and history are no longer lost if the PC shuts down while saving
+
 ## 0.4.1
 - Novedades en el menú del icono de la bandeja y como sección propia en Ajustes, con un punto mientras no las has visto // What's new in the tray icon menu and as its own Settings section, with a dot until you've seen it
 - Tras actualizar, los ajustes se abren directamente en Novedades // After an update, the settings open straight on What's new
